@@ -1,0 +1,250 @@
+const express = require('express');
+const router = express.Router();
+const bcrypt = require('bcryptjs');
+const pool = require('../db');
+const { protect, requireRole } = require('../middleware/auth');
+
+async function nextUniqueId(role) {
+  const prefix = role === 'Teacher' ? 'TCH' : 'STU';
+  const seqName = role === 'Teacher' ? 'teacher_id_seq' : 'student_id_seq';
+  const { rows } = await pool.query(`SELECT nextval('${seqName}') as n`);
+  return `${prefix}-${String(rows[0].n).padStart(3, '0')}`;
+}
+
+// GET users
+router.get('/', protect, requireRole('BoardAdmin','SchoolAdmin'), async (req, res) => {
+  try {
+    let query, params;
+    const yearFilter = req.query.academicYear ? `AND u.academic_year = $${req.user.role === 'SchoolAdmin' ? 3 : 1}` : '';
+    if (req.user.role === 'SchoolAdmin') {
+      const role = req.query.role;
+      if (role === 'Teacher' || role === 'Student') {
+        const yearParam = req.query.academicYear ? [req.query.academicYear] : [];
+        query = `SELECT u.*, s.name as school_name, s.school_id as school_code
+                 FROM users u LEFT JOIN schools s ON u.school_id=s.id
+                 WHERE u.school_id=$1 AND u.role=$2 ${req.query.academicYear ? 'AND u.academic_year=$3' : ''}
+                 ORDER BY u.created_at DESC`;
+        params = [req.user.school_id, role, ...yearParam];
+      } else {
+        const yearParam = req.query.academicYear ? [req.query.academicYear] : [];
+        query = `SELECT u.*, s.name as school_name, s.school_id as school_code
+                 FROM users u LEFT JOIN schools s ON u.school_id=s.id
+                 WHERE u.school_id=$1 AND u.role IN ('Teacher','Student') ${req.query.academicYear ? 'AND u.academic_year=$2' : ''}
+                 ORDER BY u.created_at DESC`;
+        params = [req.user.school_id, ...yearParam];
+      }
+    } else {
+      const role = req.query.role;
+      const schoolId = req.query.schoolId ? parseInt(req.query.schoolId) : null;
+      let conditions = [];
+      let paramsArr = [];
+      
+      if (schoolId) {
+        conditions.push(`u.school_id=$${paramsArr.length + 1}`);
+        paramsArr.push(schoolId);
+      }
+      
+      if (req.query.academicYear) {
+        conditions.push(`u.academic_year=$${paramsArr.length + 1}`);
+        paramsArr.push(req.query.academicYear);
+      }
+
+      const condStr = conditions.length > 0 ? 'AND ' + conditions.join(' AND ') : '';
+
+      if (role === 'Teacher') {
+        query = `SELECT u.*, s.name as school_name, s.school_id as school_code
+                 FROM users u LEFT JOIN schools s ON u.school_id=s.id
+                 WHERE u.role='Teacher' ${condStr} ORDER BY u.created_at DESC LIMIT 5000`;
+        params = paramsArr;
+      } else if (role === 'Student') {
+        query = `SELECT u.*, s.name as school_name, s.school_id as school_code
+                 FROM users u LEFT JOIN schools s ON u.school_id=s.id
+                 WHERE u.role='Student' ${condStr} ORDER BY u.created_at DESC LIMIT 5000`;
+        params = paramsArr;
+      } else {
+        query = `SELECT u.*, s.name as school_name, s.school_id as school_code
+                 FROM users u LEFT JOIN schools s ON u.school_id=s.id
+                 WHERE u.role IN ('Teacher','Student') ${condStr} ORDER BY u.created_at DESC LIMIT 5000`;
+        params = paramsArr;
+      }
+    }
+    const { rows } = await pool.query(query, params);
+    const mapped = rows.map(u => ({
+      _id: u.id, id: u.id,
+      uniqueId: u.unique_id, name: u.name,
+      email: u.email, phone: u.phone,
+      username: u.username, role: u.role,
+      status: u.status, schoolId: u.school_id,
+      assignedClassroom: u.assigned_classroom,
+      class: u.class, section: u.section,
+      rollNo: u.roll_no, schoolName: u.school_name,
+      academicYear: u.academic_year,
+    }));
+    res.json(mapped);
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+// GET single user
+router.get('/:id', protect, requireRole('BoardAdmin','SchoolAdmin'), async (req, res) => {
+  try {
+    const { rows } = await pool.query('SELECT * FROM users WHERE id=$1', [req.params.id]);
+    if (!rows[0]) return res.status(404).json({ message: 'User not found' });
+    const u = rows[0];
+    res.json({ _id: u.id, id: u.id, uniqueId: u.unique_id, name: u.name, email: u.email, phone: u.phone, username: u.username, role: u.role, status: u.status, assignedClassroom: u.assigned_classroom, class: u.class, section: u.section, rollNo: u.roll_no });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+// POST create user
+router.post('/', protect, requireRole('BoardAdmin','SchoolAdmin'), async (req, res) => {
+  try {
+    const { name, email, phone, role, username, password, class: cls, section, rollNo, schoolId, academicYear } = req.body;
+    if (!['Teacher','Student'].includes(role))
+      return res.status(400).json({ message: 'Can only create Teacher or Student' });
+
+    // For students — auto-generate username & password so admin doesn't need to set them
+    let finalUsername = username;
+    let finalPassword = password;
+    if (role === 'Student') {
+      const slug = (name || '').toLowerCase().replace(/[^a-z]/g, '').slice(0, 8);
+      const roll = (rollNo || '').replace(/[^a-z0-9]/gi, '').slice(0, 4) || Math.floor(1000 + Math.random() * 9000);
+      finalUsername = `${slug}${roll}`;
+      finalPassword = `${slug}1234`;
+      // Ensure uniqueness by appending random suffix if needed
+      const existing = await pool.query('SELECT id FROM users WHERE username=$1', [finalUsername]);
+      if (existing.rows[0]) finalUsername = `${finalUsername}${Math.floor(10 + Math.random() * 90)}`;
+    }
+
+    if (!finalUsername || !finalPassword)
+      return res.status(400).json({ message: 'Username and password required for Teachers' });
+
+    const uniqueId = await nextUniqueId(role);
+    const hashed = await bcrypt.hash(finalPassword, 10);
+    const sid = req.user.role === 'SchoolAdmin' ? req.user.school_id : (schoolId || null);
+
+    const { rows } = await pool.query(
+      `INSERT INTO users (unique_id,name,email,phone,username,password,role,school_id,class,section,roll_no,academic_year)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      [uniqueId, name, email||null, phone||null, finalUsername.toLowerCase(), hashed, role, sid, cls||null, section||null, rollNo||null, academicYear||null]
+    );
+    const u = rows[0];
+    res.status(201).json({
+      _id: u.id, id: u.id, uniqueId: u.unique_id,
+      name: u.name, role: u.role,
+      username: u.username,
+      // Return generated credentials so admin can note them down
+      generatedUsername: role === 'Student' ? finalUsername : undefined,
+      generatedPassword: role === 'Student' ? finalPassword : undefined,
+      status: u.status
+    });
+  } catch (err) {
+    if (err.code === '23505') return res.status(400).json({ message: 'Username already taken — try a different name/roll combination' });
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// PUT update
+router.put('/:id', protect, requireRole('BoardAdmin','SchoolAdmin'), async (req, res) => {
+  try {
+    const { name, email, phone, username, status, password, assignedClassroom, class: cls, section, rollNo, academicYear } = req.body;
+    let passwordHash = undefined;
+    if (password) passwordHash = await bcrypt.hash(password, 10);
+
+    const { rows } = await pool.query(
+      `UPDATE users SET name=$1,email=$2,phone=$3,username=$4,status=$5,
+       assigned_classroom=$6,class=$7,section=$8,roll_no=$9,academic_year=$10
+       ${passwordHash ? ',password=$11' : ''}
+       WHERE id=${passwordHash ? '$12' : '$11'} RETURNING *`,
+      passwordHash
+        ? [name,email,phone,username ? username.toLowerCase() : null,status,assignedClassroom,cls,section,rollNo,academicYear||null,passwordHash,req.params.id]
+        : [name,email,phone,username ? username.toLowerCase() : null,status,assignedClassroom,cls,section,rollNo,academicYear||null,req.params.id]
+    );
+    const u = rows[0];
+    res.json({ _id: u.id, uniqueId: u.unique_id, name: u.name, role: u.role, status: u.status });
+  } catch (err) {
+    if (err.code === '23505') return res.status(400).json({ message: 'Username already taken' });
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// PATCH toggle status — atomic update, no check-then-act race
+router.patch('/:id/toggle-status', protect, requireRole('BoardAdmin','SchoolAdmin'), async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `UPDATE users SET status = CASE WHEN status='Active' THEN 'Inactive' ELSE 'Active' END
+       WHERE id=$1 RETURNING status`,
+      [req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ message: 'User not found' });
+    res.json({ status: rows[0].status });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+// PATCH reset password
+router.patch('/:id/reset-password', protect, requireRole('BoardAdmin','SchoolAdmin'), async (req, res) => {
+  try {
+    const { newPassword } = req.body;
+    if (!newPassword || newPassword.length < 6)
+      return res.status(400).json({ message: 'Min 6 characters' });
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await pool.query('UPDATE users SET password=$1 WHERE id=$2', [hashed, req.params.id]);
+    res.json({ message: 'Password reset successfully' });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+// DELETE
+router.delete('/:id', protect, requireRole('BoardAdmin','SchoolAdmin'), async (req, res) => {
+  try {
+    await pool.query('DELETE FROM users WHERE id=$1', [req.params.id]);
+    res.json({ message: 'User deleted' });
+  } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+// POST bulk update roll numbers and optionally academic_year (supports auto-creating missing student records)
+router.post('/bulk-update-roll', protect, requireRole('SchoolAdmin'), async (req, res) => {
+  try {
+    const { updates, defaultClass, defaultYear } = req.body; // array of { uniqueId, rollNo, academicYear, createNew }
+    if (!Array.isArray(updates)) {
+      return res.status(400).json({ message: 'Updates must be an array' });
+    }
+
+    for (const update of updates) {
+      const { uniqueId, rollNo, academicYear, createNew } = update;
+      
+      if (createNew) {
+        const uniqueIdGen = await nextUniqueId('Student');
+        const slug = 'stu';
+        const roll = (rollNo || '').replace(/[^a-z0-9]/gi, '').slice(0, 4) || Math.floor(1000 + Math.random() * 9000);
+        const finalUsername = `${slug}${roll}${Math.floor(10 + Math.random() * 90)}`;
+        const hashed = await bcrypt.hash(`${slug}1234`, 10);
+        
+        await pool.query(
+          `INSERT INTO users (unique_id, name, username, password, role, school_id, class, roll_no, academic_year)
+           VALUES ($1, $2, $3, $4, 'Student', $5, $6, $7, $8)`,
+          [uniqueIdGen, '', finalUsername.toLowerCase(), hashed, req.user.school_id, defaultClass || 'SSC-I', rollNo, academicYear || defaultYear]
+        );
+      } else {
+        if (academicYear) {
+          await pool.query(
+            `UPDATE users 
+             SET roll_no = $1, academic_year = $4
+             WHERE unique_id = $2 AND school_id = $3 AND role = 'Student'`,
+            [rollNo, uniqueId, req.user.school_id, academicYear]
+          );
+        } else {
+          await pool.query(
+            `UPDATE users 
+             SET roll_no = $1
+             WHERE unique_id = $2 AND school_id = $3 AND role = 'Student'`,
+            [rollNo, uniqueId, req.user.school_id]
+          );
+        }
+      }
+    }
+
+    res.json({ success: true, message: '✅ Roll numbers and batches updated successfully!' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+module.exports = router;
