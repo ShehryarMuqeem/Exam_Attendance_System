@@ -1,0 +1,9 @@
+{
+  "short_name": "AttendX",
+  "name": "AttendX - Board Exam Management System",
+  "icons": [],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#0a1f6b",
+  "background_color": "#ffffff"
+}
