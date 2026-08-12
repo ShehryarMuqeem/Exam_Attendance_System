@@ -187,23 +187,31 @@ async function initDB() {
   } finally { client.release(); }
 }
 
+const isVercel = process.env.VERCEL === '1' || !!process.env.VERCEL;
+
 async function startServer(retriesLeft = 10, delayMs = 3000) {
   try {
     const client = await pool.connect();
     client.release();
     console.log('✅ PostgreSQL connected (Supabase)');
     await initDB();
-    app.listen(process.env.PORT || 5000, () => {
-      console.log(`🚀 Server running on port ${process.env.PORT || 5000}`);
-    });
+    if (!isVercel) {
+      app.listen(process.env.PORT || 5000, () => {
+        console.log(`🚀 Server running on port ${process.env.PORT || 5000}`);
+      });
+    } else {
+      console.log('🚀 Running in Vercel serverless environment');
+    }
   } catch (err) {
     console.error(`❌ PostgreSQL connection error: ${err.message}`);
     if (retriesLeft > 0) {
       console.log(`⏳ Retrying in ${delayMs/1000}s… (${retriesLeft} attempts left)`);
       setTimeout(() => startServer(retriesLeft - 1, Math.min(delayMs * 1.5, 30000)), delayMs);
     } else {
-      console.error('❌ Out of retries — exiting.');
-      process.exit(1);
+      console.error('❌ Out of retries.');
+      if (!isVercel) {
+        process.exit(1);
+      }
     }
   }
 }
@@ -212,3 +220,6 @@ process.on('unhandledRejection', (reason) => console.error('⚠ Unhandled reject
 process.on('uncaughtException', (err) => console.error('⚠ Uncaught exception:', err));
 
 startServer();
+
+module.exports = app;
+
