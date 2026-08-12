@@ -44,6 +44,7 @@ async function initDB() {
         school_id INTEGER REFERENCES schools(id) ON DELETE CASCADE,
         assigned_classroom VARCHAR(20),
         class VARCHAR(30), section VARCHAR(5), roll_no VARCHAR(50),
+        academic_year VARCHAR(30),
         created_at TIMESTAMP DEFAULT NOW()
       );
 
@@ -151,6 +152,7 @@ async function initDB() {
       // ===== Column migrations FIRST (before indexes that depend on them) =====
       const migrations = [
         `ALTER TABLE schools ADD COLUMN IF NOT EXISTS district VARCHAR(100) NOT NULL DEFAULT ''`,
+        `ALTER TABLE users ADD COLUMN IF NOT EXISTS academic_year VARCHAR(30)`,
         `ALTER TABLE exams ADD COLUMN IF NOT EXISTS center_id INTEGER REFERENCES schools(id) ON DELETE CASCADE`,
         `ALTER TABLE exams ADD COLUMN IF NOT EXISTS academic_year VARCHAR(20)`,
         `ALTER TABLE exams ADD COLUMN IF NOT EXISTS term VARCHAR(40)`,
