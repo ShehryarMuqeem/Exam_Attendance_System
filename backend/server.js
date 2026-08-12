@@ -8,6 +8,31 @@ const app = express();
 app.use(cors({ origin: '*' }));
 app.use(express.json({ limit: '10mb' }));
 
+let dbInitializationPromise = null;
+
+async function ensureDb() {
+  if (!dbInitializationPromise) {
+    dbInitializationPromise = (async () => {
+      const client = await pool.connect();
+      client.release();
+      console.log('✅ PostgreSQL connected (Supabase)');
+      await initDB();
+    })();
+  }
+  return dbInitializationPromise;
+}
+
+app.use(async (req, res, next) => {
+  try {
+    await ensureDb();
+    next();
+  } catch (err) {
+    console.error('❌ Database initialization error:', err);
+    res.status(500).json({ message: 'Database initialization failed: ' + err.message });
+  }
+});
+
+
 app.use('/api/auth',       require('./routes/auth'));
 app.use('/api/schools',    require('./routes/schools'));
 app.use('/api/users',      require('./routes/users'));
@@ -193,10 +218,7 @@ const isVercel = process.env.VERCEL === '1' || !!process.env.VERCEL;
 
 async function startServer(retriesLeft = 10, delayMs = 3000) {
   try {
-    const client = await pool.connect();
-    client.release();
-    console.log('✅ PostgreSQL connected (Supabase)');
-    await initDB();
+    await ensureDb();
     if (!isVercel) {
       app.listen(process.env.PORT || 5000, () => {
         console.log(`🚀 Server running on port ${process.env.PORT || 5000}`);
