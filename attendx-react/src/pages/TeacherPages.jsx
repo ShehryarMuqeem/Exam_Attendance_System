@@ -11,7 +11,9 @@ export function TeacherDashboard() {
   const [todayCount, setTodayCount] = useState(0);
 
   useEffect(() => {
-    api('/attendance/current-exam').then(d => setCurrentExam(d.currentExam)).catch(() => {});
+    const localDate = new Date().toLocaleDateString('en-CA');
+    const localTime = new Date().toTimeString().slice(0, 5);
+    api(`/attendance/current-exam?date=${localDate}&time=${localTime}`).then(d => setCurrentExam(d.currentExam)).catch(() => {});
   }, [api]);
 
   return (
@@ -96,7 +98,9 @@ export function MarkAttendance() {
   const scanIntervalRef = useRef(null);
 
   useEffect(() => {
-    api('/attendance/current-exam').then(d => {
+    const localDate = new Date().toLocaleDateString('en-CA');
+    const localTime = new Date().toTimeString().slice(0, 5);
+    api(`/attendance/current-exam?date=${localDate}&time=${localTime}`).then(d => {
       if (d.currentExam) setActiveExam(d.currentExam);
     }).catch(() => {});
   }, [api]);
@@ -435,7 +439,9 @@ export function AttendanceReport() {
   useEffect(() => {
     api('/exams').then(res => {
       setExams(res);
-      api('/attendance/current-exam').then(d => {
+      const localDate = new Date().toLocaleDateString('en-CA');
+      const localTime = new Date().toTimeString().slice(0, 5);
+      api(`/attendance/current-exam?date=${localDate}&time=${localTime}`).then(d => {
         if (d.currentExam) {
           setSelectedExamId(d.currentExam.exam_id);
         } else if (res.length > 0) {
@@ -573,7 +579,9 @@ export function AbsentReport() {
   useEffect(() => {
     api('/exams').then(res => {
       setExams(res);
-      api('/attendance/current-exam').then(d => {
+      const localDate = new Date().toLocaleDateString('en-CA');
+      const localTime = new Date().toTimeString().slice(0, 5);
+      api(`/attendance/current-exam?date=${localDate}&time=${localTime}`).then(d => {
         if (d.currentExam) {
           setSelectedExamId(d.currentExam.exam_id);
         } else if (res.length > 0) {

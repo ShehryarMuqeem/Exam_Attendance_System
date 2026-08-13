@@ -134,8 +134,13 @@ router.patch('/unlock/:examId', protect, requireRole('BoardAdmin'), async (req, 
 // GET auto-detect current exam for a teacher (time-window based, exact start time)
 router.get('/current-exam', protect, requireRole('Teacher'), async (req, res) => {
   try {
+    let currentDate = req.query.date;
+    let currentTime = req.query.time;
+
     const now = new Date();
-    const currentDate = now.toLocaleDateString('en-CA');
+    if (!currentDate) {
+      currentDate = now.toLocaleDateString('en-CA');
+    }
 
     const { rows: duties } = await pool.query(
       `SELECT da.*, e.id as exam_id, e.subject, e.department, e.term, e.date, e.time, e.duration, e.class, e.status as exam_status
@@ -145,13 +150,20 @@ router.get('/current-exam', protect, requireRole('Teacher'), async (req, res) =>
     );
 
     let currentExam = null;
+    let nowMins;
+    if (currentTime) {
+      const [h, m] = currentTime.split(':').map(Number);
+      nowMins = h * 60 + m;
+    } else {
+      nowMins = now.getHours() * 60 + now.getMinutes();
+    }
+
     for (const duty of duties) {
       if (duty.date !== currentDate) continue;
       if (!duty.time) continue;
       const [h, m] = duty.time.split(':').map(Number);
       const examStart = h * 60 + m;
       const examEnd = examStart + (duty.duration || 180);
-      const nowMins = now.getHours() * 60 + now.getMinutes();
       if (nowMins >= examStart && nowMins <= examEnd) { currentExam = duty; break; }
     }
     res.json({ currentExam });
