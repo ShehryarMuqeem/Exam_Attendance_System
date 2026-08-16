@@ -83,7 +83,10 @@ router.get('/roster', protect, requireRole('Teacher'), async (req, res) => {
 router.post('/mark', protect, requireRole('Teacher'), async (req, res) => {
   try {
     const { studentIdRef, examIdRef, admitCardId, classroom, qrAdmitScanned, qrAnswerScanned, answerSheetNumber, status } = req.body;
-    if (!studentIdRef || !examIdRef) return res.status(400).json({ message: 'studentIdRef and examIdRef required' });
+    const finalCopyNumber = (answerSheetNumber || qrAnswerScanned || '').toString().trim();
+    if (!finalCopyNumber) {
+      return res.status(400).json({ message: 'Copy / Answer sheet number is required.' });
+    }
 
     const { rows: duties } = await pool.query(
       'SELECT classroom FROM duty_assignments WHERE teacher_id=$1 AND exam_id=$2',
@@ -93,6 +96,23 @@ router.post('/mark', protect, requireRole('Teacher'), async (req, res) => {
 
     const { rows: examRows } = await pool.query('SELECT status FROM exams WHERE id=$1', [examIdRef]);
     if (examRows[0]?.status === 'Locked') return res.status(403).json({ message: '🔒 Attendance is locked for this exam.' });
+
+    // Validate duplicate copy number before insert
+    const { rows: duplicateCopy } = await pool.query(
+      `SELECT a.id, a.copy_number, u.name as student_name, u.roll_no 
+       FROM attendance a 
+       LEFT JOIN users u ON a.student_id = u.id 
+       WHERE a.exam_id = $1 
+         AND (LOWER(TRIM(a.copy_number)) = LOWER(TRIM($2)) OR LOWER(TRIM(a.qr_answer_scanned)) = LOWER(TRIM($2)))
+         AND a.student_id != $3`,
+      [examIdRef, finalCopyNumber, studentIdRef]
+    );
+    if (duplicateCopy.length > 0) {
+      const prevStudent = duplicateCopy[0];
+      return res.status(400).json({
+        message: `❌ Duplicate Copy Number! Copy No. "${finalCopyNumber}" is already assigned to student (Roll No: ${prevStudent.roll_no || '—'}, Name: ${prevStudent.student_name || 'Student'}).`
+      });
+    }
 
     const { rows } = await pool.query(
       `INSERT INTO attendance (student_id, exam_id, teacher_id, classroom, qr_admit_scanned, qr_answer_scanned, copy_number, status)
@@ -104,8 +124,8 @@ router.post('/mark', protect, requireRole('Teacher'), async (req, res) => {
         studentIdRef, examIdRef, req.user.id,
         classroom || duties[0].classroom,
         qrAdmitScanned || null,
-        qrAnswerScanned || null,
-        answerSheetNumber || qrAnswerScanned || null,
+        finalCopyNumber || null,
+        finalCopyNumber || null,
         status || 'Present'
       ]
     );
@@ -131,7 +151,7 @@ router.patch('/unlock/:examId', protect, requireRole('BoardAdmin'), async (req, 
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
-// GET auto-detect current exam for a teacher (time-window based, exact start time)
+// GET auto-detect current exam for a teacher (generous time window + full assigned list)
 router.get('/current-exam', protect, requireRole('Teacher'), async (req, res) => {
   try {
     let currentDate = req.query.date;
@@ -143,9 +163,13 @@ router.get('/current-exam', protect, requireRole('Teacher'), async (req, res) =>
     }
 
     const { rows: duties } = await pool.query(
-      `SELECT da.*, e.id as exam_id, e.subject, e.department, e.term, e.date, e.time, e.duration, e.class, e.status as exam_status
-       FROM duty_assignments da JOIN exams e ON da.exam_id=e.id
-       WHERE da.teacher_id=$1`,
+      `SELECT da.*, e.id as exam_id, e.subject, e.department, e.term, e.date, e.time, e.duration, e.class, e.shift, e.status as exam_status,
+              s.name as center_name
+       FROM duty_assignments da 
+       JOIN exams e ON da.exam_id = e.id
+       LEFT JOIN schools s ON e.center_id = s.id
+       WHERE da.teacher_id = $1
+       ORDER BY e.date ASC, e.time ASC`,
       [req.user.id]
     );
 
@@ -158,15 +182,41 @@ router.get('/current-exam', protect, requireRole('Teacher'), async (req, res) =>
       nowMins = now.getHours() * 60 + now.getMinutes();
     }
 
-    for (const duty of duties) {
-      if (duty.date !== currentDate) continue;
-      if (!duty.time) continue;
-      const [h, m] = duty.time.split(':').map(Number);
-      const examStart = h * 60 + m;
-      const examEnd = examStart + (duty.duration || 180);
-      if (nowMins >= examStart && nowMins <= examEnd) { currentExam = duty; break; }
+    // 1. Try to find exam active today within a generous window
+    const todayDuties = duties.filter(d => d.date === currentDate && d.exam_status !== 'Locked');
+
+    for (const duty of todayDuties) {
+      if (duty.time) {
+        const [h, m] = duty.time.split(':').map(Number);
+        const examStart = h * 60 + m;
+        const examDuration = Number(duty.duration) || 180;
+        // Allow attendance from 2 hours before start until 3 hours after end
+        const windowStart = Math.max(0, examStart - 120);
+        const windowEnd = examStart + examDuration + 180;
+        if (nowMins >= windowStart && nowMins <= windowEnd) {
+          currentExam = duty;
+          break;
+        }
+      }
     }
-    res.json({ currentExam });
+
+    // 2. If no time-matched exam, but teacher has an exam today, use the first today duty
+    if (!currentExam && todayDuties.length > 0) {
+      currentExam = todayDuties[0];
+    }
+
+    // 3. If still no exam, but teacher has any non-locked assigned duties, fallback to the latest one
+    if (!currentExam && duties.length > 0) {
+      const unlocked = duties.filter(d => d.exam_status !== 'Locked');
+      if (unlocked.length > 0) {
+        currentExam = unlocked[0];
+      }
+    }
+
+    res.json({
+      currentExam,
+      assignedExams: duties
+    });
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
@@ -204,23 +254,67 @@ router.get('/', protect, requireRole('BoardAdmin','SchoolAdmin'), async (req, re
   try {
     const { examId, classroom } = req.query;
     let query = `
-      SELECT a.*, u.name as student_name, u.unique_id as student_unique_id,
-        u.class as student_class, u.roll_no as student_roll_no,
-        e.subject as exam_subject, e.date as exam_date,
-        t.name as teacher_name, t.unique_id as teacher_unique_id
-      FROM attendance a JOIN users u ON a.student_id=u.id JOIN exams e ON a.exam_id=e.id
-      JOIN users t ON a.teacher_id=t.id WHERE 1=1`;
+      SELECT a.*, 
+        u.name as student_name, 
+        u.unique_id as student_unique_id,
+        u.class as student_class, 
+        u.roll_no as student_roll_no,
+        s.name as student_school_name,
+        e.subject as exam_subject, 
+        e.date as exam_date,
+        e.time as exam_time,
+        e.class as exam_class,
+        e.shift as exam_shift,
+        cs.name as center_school_name,
+        t.name as teacher_name, 
+        t.unique_id as teacher_unique_id
+      FROM attendance a 
+      JOIN users u ON a.student_id = u.id 
+      LEFT JOIN schools s ON u.school_id = s.id
+      JOIN exams e ON a.exam_id = e.id
+      LEFT JOIN schools cs ON e.center_id = cs.id
+      LEFT JOIN users t ON a.teacher_id = t.id 
+      WHERE 1=1`;
     const params = [];
     if (examId)    { params.push(examId);    query += ` AND a.exam_id=$${params.length}`; }
     if (classroom) { params.push(classroom); query += ` AND a.classroom=$${params.length}`; }
     query += ' ORDER BY a.marked_at DESC LIMIT 5000';
     const { rows } = await pool.query(query, params);
-    res.json(rows.map(r => ({
-      _id: r.id, classroom: r.classroom, status: r.status, markedAt: r.marked_at,
-      studentId: { name: r.student_name, uniqueId: r.student_unique_id, class: r.student_class, rollNo: r.student_roll_no },
-      examId: { subject: r.exam_subject, date: r.exam_date },
-      teacherId: { name: r.teacher_name, uniqueId: r.teacher_unique_id },
-    })));
+    res.json(rows.map(r => {
+      const displayName = r.student_name && !r.student_name.startsWith('Ad-hoc Student')
+        ? r.student_name
+        : (r.student_roll_no ? `Roll No. ${r.student_roll_no}` : (r.student_unique_id || 'Student'));
+      const displayRoll = r.student_roll_no || r.student_unique_id || '—';
+      return {
+        _id: r.id,
+        id: r.id,
+        classroom: r.classroom || '—',
+        status: r.status || 'Present',
+        copyNumber: r.copy_number || '—',
+        markedAt: r.marked_at,
+        studentId: {
+          id: r.student_id,
+          name: displayName,
+          uniqueId: r.student_unique_id,
+          class: r.student_class || r.exam_class || '—',
+          rollNo: displayRoll,
+          schoolName: r.student_school_name || '—',
+        },
+        examId: {
+          id: r.exam_id,
+          subject: r.exam_subject,
+          date: r.exam_date,
+          time: r.exam_time,
+          class: r.exam_class,
+          shift: r.exam_shift,
+          centerName: r.center_school_name || '—',
+        },
+        teacherId: {
+          name: r.teacher_name || 'Invigilator',
+          uniqueId: r.teacher_unique_id || '—',
+        },
+      };
+    }));
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
@@ -361,11 +455,33 @@ router.post('/verify-admit-qr', protect, requireRole('Teacher'), async (req, res
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
-// POST Step 2 — record answer sheet QR (no validation — just record as copy_number)
+// POST Step 2 — record answer sheet QR (validate uniqueness against exam)
 router.post('/verify-answer-qr', protect, requireRole('Teacher'), async (req, res) => {
   try {
     const { qrAnswerScanned, admitCardId, studentIdRef, examIdRef } = req.body;
-    if (!qrAnswerScanned) return res.status(400).json({ valid: false, message: 'Answer sheet QR required' });
+    const cleanCopyNumber = (qrAnswerScanned || '').toString().trim();
+    if (!cleanCopyNumber) {
+      return res.status(400).json({ valid: false, message: '❌ Answer sheet QR / Copy number is required' });
+    }
+
+    // Check if this copy number / answer sheet QR is already assigned for this exam
+    const { rows: existingCopy } = await pool.query(
+      `SELECT a.id, a.copy_number, a.student_id, u.name as student_name, u.roll_no 
+       FROM attendance a 
+       LEFT JOIN users u ON a.student_id = u.id 
+       WHERE a.exam_id = $1 
+         AND (LOWER(TRIM(a.copy_number)) = LOWER(TRIM($2)) OR LOWER(TRIM(a.qr_answer_scanned)) = LOWER(TRIM($2)))
+         AND a.student_id != $3`,
+      [examIdRef, cleanCopyNumber, studentIdRef]
+    );
+
+    if (existingCopy.length > 0) {
+      const prevStudent = existingCopy[0];
+      return res.status(400).json({
+        valid: false,
+        message: `❌ Duplicate Copy Number! Copy No. "${cleanCopyNumber}" has already been assigned to another student (Roll No: ${prevStudent.roll_no || '—'}, Name: ${prevStudent.student_name || 'Student'}). Please use a different copy number.`
+      });
+    }
 
     // Get exam + student info for preview
     const { rows: examRows } = await pool.query('SELECT * FROM exams WHERE id=$1', [examIdRef]);
@@ -387,8 +503,8 @@ router.post('/verify-answer-qr', protect, requireRole('Teacher'), async (req, re
         admitCardId,
         examIdRef,
         qrAdmitScanned: studentRows[0]?.unique_id,
-        qrAnswerScanned,
-        answerSheetNumber: qrAnswerScanned, // whatever was scanned = copy number
+        qrAnswerScanned: cleanCopyNumber,
+        answerSheetNumber: cleanCopyNumber, // whatever was scanned/entered = copy number
       }
     });
   } catch (err) { res.status(500).json({ message: err.message }); }

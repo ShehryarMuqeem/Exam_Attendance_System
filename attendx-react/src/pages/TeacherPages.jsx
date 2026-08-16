@@ -49,7 +49,7 @@ export function TeacherDashboard() {
         <div className="wide-grid">
           <div onClick={()=>navigate('/teacher/mark-attendance')} style={{ background:'#fff', borderRadius:14, padding:16, border:'1px solid var(--gray-100)', cursor:'pointer', display:'flex', alignItems:'center', gap:14 }}>
             <div style={{ fontSize:26 }}>📝</div>
-            <div><div style={{ fontWeight:700, fontSize:13 }}>Mark Attendance</div><div style={{ fontSize:11, color:'var(--gray-500)' }}>Tap each student to mark Present/Absent</div></div>
+            <div><div style={{ fontWeight:700, fontSize:13 }}>Mark Attendance</div><div style={{ fontSize:11, color:'var(--gray-500)' }}>Scan admit card & record copy number</div></div>
             <div style={{ marginLeft:'auto', color:'var(--gray-300)', fontSize:18 }}>›</div>
           </div>
           <div onClick={()=>navigate('/teacher/report')} style={{ background:'#fff', borderRadius:14, padding:16, border:'1px solid var(--gray-100)', cursor:'pointer', display:'flex', alignItems:'center', gap:14 }}>
@@ -84,6 +84,7 @@ export function MarkAttendance() {
   const { api, showToast } = useApp();
   const [step, setStep] = useState(STEPS.IDLE);
   const [activeExam, setActiveExam] = useState(null);
+  const [assignedExams, setAssignedExams] = useState([]);
   const [studentInfo, setStudentInfo] = useState(null);
   const [preview, setPreview] = useState(null);
   const [errMsg, setErrMsg] = useState('');
@@ -97,13 +98,23 @@ export function MarkAttendance() {
   const streamRef = useRef(null);
   const scanIntervalRef = useRef(null);
 
-  useEffect(() => {
+  const loadCurrentExam = useCallback(() => {
     const localDate = new Date().toLocaleDateString('en-CA');
     const localTime = new Date().toTimeString().slice(0, 5);
     api(`/attendance/current-exam?date=${localDate}&time=${localTime}`).then(d => {
-      if (d.currentExam) setActiveExam(d.currentExam);
+      const duties = d.assignedExams || [];
+      setAssignedExams(duties);
+      if (d.currentExam) {
+        setActiveExam(d.currentExam);
+      } else if (duties.length > 0) {
+        setActiveExam(duties[0]);
+      }
     }).catch(() => {});
   }, [api]);
+
+  useEffect(() => {
+    loadCurrentExam();
+  }, [loadCurrentExam]);
 
   const stopCamera = () => {
     if (streamRef.current) { streamRef.current.getTracks().forEach(t => t.stop()); streamRef.current = null; }
@@ -112,7 +123,7 @@ export function MarkAttendance() {
   };
 
   const startCamera = async (target) => {
-    if (!activeExam) { showToast('No active exam for this time slot', 'error'); return; }
+    if (!activeExam) { showToast('Please select an active assigned exam first', 'error'); return; }
     setScanTarget(target);
     setScanning(true);
     try {
@@ -148,7 +159,7 @@ export function MarkAttendance() {
   };
 
   const handleVerifyAdmit = async (qr) => {
-    if (!activeExam) { showToast('No active exam', 'error'); return; }
+    if (!activeExam) { showToast('No active exam selected', 'error'); return; }
     const cleanQr = typeof qr === 'string' ? qr.trim() : qr;
     setLoading(true); setStep(STEPS.SCAN_ADMIT);
     try {
@@ -171,6 +182,10 @@ export function MarkAttendance() {
   const handleVerifyAnswer = async (qr) => {
     if (!studentInfo) return;
     const cleanQr = typeof qr === 'string' ? qr.trim() : qr;
+    if (!cleanQr) {
+      showToast('Please enter or scan an answer sheet copy number', 'error');
+      return;
+    }
     setLoading(true);
     try {
       const res = await api('/attendance/verify-answer-qr', {
@@ -183,13 +198,17 @@ export function MarkAttendance() {
         })
       });
       if (res.valid) {
+        setErrMsg('');
         setPreview(res.preview);
         setStep(STEPS.PREVIEW);
       } else {
         setErrMsg(res.message);
-        setStep(STEPS.ERROR);
+        showToast(res.message, 'error');
       }
-    } catch (e) { setErrMsg(e.message); setStep(STEPS.ERROR); }
+    } catch (e) {
+      setErrMsg(e.message);
+      showToast(e.message, 'error');
+    }
     setLoading(false);
   };
 
@@ -265,17 +284,45 @@ export function MarkAttendance() {
       <PageHeader title="Mark Attendance" icon="📲" backPath="/teacher" />
       <div className="page-content" style={{ display:'flex', flexDirection:'column', gap:16 }}>
 
+        {/* Exam selector if multiple assigned exams */}
+        {assignedExams.length > 1 && (
+          <div style={{ background: '#fff', borderRadius: 12, padding: '12px 14px', border: '1px solid var(--gray-200)' }}>
+            <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray-600)', display: 'block', marginBottom: 4 }}>
+              📌 Select Assigned Exam:
+            </label>
+            <select
+              className="input-field"
+              value={activeExam?.exam_id || ''}
+              onChange={e => {
+                const found = assignedExams.find(ex => String(ex.exam_id) === e.target.value);
+                if (found) setActiveExam(found);
+              }}
+            >
+              {assignedExams.map(ex => (
+                <option key={ex.exam_id} value={ex.exam_id}>
+                  {ex.subject} — {ex.class} ({ex.date} {ex.time || ''}) · Room {ex.classroom}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
         {/* Active exam banner */}
         {activeExam ? (
-          <div style={{ background:'#dcfce7', border:'2px solid #16a34a', borderRadius:12, padding:'12px 16px', textAlign:'center' }}>
-            <div style={{ fontSize:10, color:'#166534', fontWeight:700, textTransform:'uppercase', letterSpacing:.5 }}>Active Exam</div>
-            <div style={{ fontSize:16, fontWeight:800, color:'#14532d', marginTop:2 }}>{activeExam.subject}</div>
-            <div style={{ fontSize:11, color:'#166534' }}>{activeExam.date} · {activeExam.time} · {activeExam.classroom}</div>
+          <div style={{ background:'#dcfce7', border:'2px solid #16a34a', borderRadius:12, padding:'14px 16px', textAlign:'center' }}>
+            <div style={{ fontSize:10, color:'#166534', fontWeight:700, textTransform:'uppercase', letterSpacing:.5 }}>Active Exam Duty</div>
+            <div style={{ fontSize:17, fontWeight:800, color:'#14532d', marginTop:2 }}>{activeExam.subject} — {activeExam.class}</div>
+            <div style={{ fontSize:12, color:'#166534', marginTop:4, fontWeight:600 }}>
+              📅 {activeExam.date} {activeExam.time ? `· ⏰ ${activeExam.time}` : ''} · 🏫 Room: {activeExam.classroom}
+            </div>
+            {activeExam.center_name && (
+              <div style={{ fontSize:11, color:'#15803d', marginTop:2 }}>📍 Center: {activeExam.center_name}</div>
+            )}
           </div>
         ) : (
-          <div style={{ background:'#fef3c7', border:'2px solid #d97706', borderRadius:12, padding:'12px 16px', textAlign:'center' }}>
-            <div style={{ fontSize:12, color:'#92400e', fontWeight:700 }}>⚠️ No active exam right now</div>
-            <div style={{ fontSize:11, color:'#92400e', marginTop:2 }}>Attendance will be enabled at exam start time</div>
+          <div style={{ background:'#fef3c7', border:'2px solid #d97706', borderRadius:12, padding:'14px 16px', textAlign:'center' }}>
+            <div style={{ fontSize:13, color:'#92400e', fontWeight:800 }}>⚠️ No Active Exam Assigned</div>
+            <div style={{ fontSize:11, color:'#92400e', marginTop:4 }}>Please ensure the school administrator has assigned you duty for an exam.</div>
           </div>
         )}
 
@@ -335,20 +382,33 @@ export function MarkAttendance() {
           <div style={{ fontSize:11, color:'#166534' }}>{studentInfo?.subject} · {studentInfo?.classroom}</div>
         </div>
 
+        {errMsg && (
+          <div style={{ background:'#fef2f2', border:'2px solid #dc2626', borderRadius:12, padding:'12px 16px', color:'#b91c1c' }}>
+            <div style={{ fontWeight:700, fontSize:13, marginBottom:2 }}>⚠️ Copy Number Error</div>
+            <div style={{ fontSize:12, lineHeight:1.4 }}>{errMsg}</div>
+          </div>
+        )}
+
         <div style={{ background:'#e0e8ff', borderRadius:12, padding:'12px 16px', textAlign:'center' }}>
           <div style={{ fontSize:13, fontWeight:700, color:'#0a1f6b' }}>Now scan the Answer Sheet QR</div>
           <div style={{ fontSize:11, color:'var(--gray-500)', marginTop:4 }}>Any QR code on the answer sheet — it will be recorded as the copy number</div>
         </div>
 
-        <button className="btn btn-primary" style={{ padding:16 }} onClick={() => startCamera('answer')} disabled={loading}>
+        <button className="btn btn-primary" style={{ padding:16 }} onClick={() => { setErrMsg(''); startCamera('answer'); }} disabled={loading}>
           📷 Scan Answer Sheet QR
         </button>
 
-        <details style={{ background:'var(--gray-50)', borderRadius:10, padding:'10px 14px' }}>
+        <details open={!!errMsg} style={{ background:'var(--gray-50)', borderRadius:10, padding:'10px 14px' }}>
           <summary style={{ fontSize:12, fontWeight:700, color:'var(--gray-600)', cursor:'pointer' }}>⌨️ Manual Entry</summary>
           <div style={{ marginTop:12, display:'flex', flexDirection:'column', gap:10 }}>
-            <input className="input-field" placeholder="Answer Sheet QR / Copy Number" value={manualAnswer} onChange={e=>setManualAnswer(e.target.value)} />
-            <button className="btn btn-primary btn-sm" onClick={()=>{ if(manualAnswer.trim()) handleVerifyAnswer(manualAnswer.trim()); }} disabled={!manualAnswer.trim()||loading}>
+            <input
+              className="input-field"
+              placeholder="Answer Sheet QR / Copy Number"
+              value={manualAnswer}
+              onChange={e => { setErrMsg(''); setManualAnswer(e.target.value); }}
+              autoFocus={!!errMsg}
+            />
+            <button className="btn btn-primary btn-sm" onClick={() => { if(manualAnswer.trim()) handleVerifyAnswer(manualAnswer.trim()); }} disabled={!manualAnswer.trim()||loading}>
               Confirm Answer Sheet
             </button>
           </div>
@@ -417,10 +477,21 @@ export function MarkAttendance() {
       <div className="page-content" style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', flex:1, gap:16, textAlign:'center' }}>
         <div style={{ fontSize:60 }}>❌</div>
         <div style={{ background:'#fef2f2', border:'2px solid #dc2626', borderRadius:12, padding:'16px 20px', width:'100%' }}>
-          <div style={{ fontWeight:700, fontSize:14, color:'#dc2626', marginBottom:6 }}>Scan Failed</div>
+          <div style={{ fontWeight:700, fontSize:14, color:'#dc2626', marginBottom:6 }}>Attendance Marking Failed</div>
           <div style={{ fontSize:12, color:'#dc2626' }}>{errMsg}</div>
         </div>
-        <button className="btn btn-primary" style={{ width:'100%', padding:14 }} onClick={reset}>Try Again</button>
+        {studentInfo ? (
+          <div style={{ display:'flex', flexDirection:'column', gap:10, width:'100%' }}>
+            <button className="btn btn-primary" style={{ width:'100%', padding:14 }} onClick={() => { setErrMsg(''); setStep(STEPS.SCAN_ANSWER); }}>
+              📄 Enter / Scan Copy Number Again
+            </button>
+            <button className="btn btn-ghost" style={{ width:'100%' }} onClick={reset}>
+              ← Start Over
+            </button>
+          </div>
+        ) : (
+          <button className="btn btn-primary" style={{ width:'100%', padding:14 }} onClick={reset}>Try Again</button>
+        )}
       </div>
     </Page>
   );

@@ -485,6 +485,7 @@ export function ExamManagement() {
   const [yearFilter, setYearFilter] = useState('');
   const [years, setYears] = useState([]);
   const [confirmDelete, setConfirmDelete] = useState(null);
+  const [viewDetailsExam, setViewDetailsExam] = useState(null);
 
   // Wizard state
   const [terms, setTerms] = useState([]);
@@ -645,12 +646,18 @@ export function ExamManagement() {
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: 10, borderTop: '1px solid var(--gray-100)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', paddingTop: 10, borderTop: '1px solid var(--gray-100)' }}>
+                    <button
+                      className="btn btn-outline btn-sm"
+                      onClick={() => setViewDetailsExam(e)}
+                    >
+                      👁️ View Details
+                    </button>
                     <button
                       className="btn btn-red btn-sm"
                       onClick={() => setConfirmDelete(e._id || e.id)}
                     >
-                      🗑 Delete Exam
+                      🗑 Delete
                     </button>
                   </div>
                 </div>
@@ -763,7 +770,10 @@ export function ExamManagement() {
                           <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 2 }}>📍 Center: {e.centerName || '—'}</div>
                           <div style={{ marginTop: 6 }}>{examStatusBadge(e.status)}</div>
                         </div>
-                        <button className="btn btn-red btn-sm" onClick={() => setConfirmDelete(e._id || e.id)}>Delete</button>
+                        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                          <button className="btn btn-outline btn-sm" onClick={() => setViewDetailsExam(e)}>👁️ View</button>
+                          <button className="btn btn-red btn-sm" onClick={() => setConfirmDelete(e._id || e.id)}>Delete</button>
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -782,6 +792,62 @@ export function ExamManagement() {
         title="Delete Exam"
         message="Are you sure you want to delete this exam? This will remove all associated duty assignments and attendance records."
       />
+
+      {/* EXAM DETAILS MODAL */}
+      {viewDetailsExam && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', padding: 24, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16 }}>
+              <div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray-500)', textTransform: 'uppercase' }}>Exam Schedule Details</div>
+                <div style={{ fontSize: 19, fontWeight: 900, color: '#0a1f6b', marginTop: 2 }}>{viewDetailsExam.subject}</div>
+                <div style={{ fontSize: 12, color: 'var(--gray-600)' }}>Class: <strong>{viewDetailsExam.class}</strong> · {viewDetailsExam.shift || 'Morning'} Shift</div>
+              </div>
+              {examStatusBadge(viewDetailsExam.status)}
+            </div>
+
+            <div style={{ background: '#f8fafc', borderRadius: 12, border: '1px solid var(--gray-200)', padding: 16, marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {[
+                { label: 'Exam ID', value: viewDetailsExam.examId || viewDetailsExam.id },
+                { label: 'Academic Year', value: viewDetailsExam.academicYear },
+                { label: 'Term', value: viewDetailsExam.term || '—' },
+                { label: 'Department', value: viewDetailsExam.department || '—' },
+                { label: 'Exam Date', value: viewDetailsExam.date },
+                { label: 'Start Time', value: viewDetailsExam.time || 'Not specified' },
+                { label: 'Duration', value: viewDetailsExam.duration ? `${viewDetailsExam.duration} mins (${Math.round(viewDetailsExam.duration / 60 * 10) / 10} hrs)` : '180 mins (Standard 3 hrs)' },
+                { label: 'Examination Center', value: viewDetailsExam.centerName || 'Assigned Center' },
+                { label: 'Attendance Lock Status', value: viewDetailsExam.status === 'Locked' ? '🔒 Locked (Marking Disabled)' : '🔓 Unlocked (Marking Enabled)' },
+              ].map(item => (
+                <div key={item.label} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, borderBottom: '1px solid #edf2f7', paddingBottom: 6 }}>
+                  <span style={{ color: 'var(--gray-500)', fontWeight: 600 }}>{item.label}:</span>
+                  <span style={{ fontWeight: 700, color: 'var(--gray-900)' }}>{item.value}</span>
+                </div>
+              ))}
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <button
+                className="btn btn-primary"
+                style={{ width: '100%', padding: 12 }}
+                onClick={() => {
+                  setViewDetailsExam(null);
+                  navigate('/admin/attendance');
+                }}
+              >
+                📊 View Attendance Records for this Exam
+              </button>
+
+              <button
+                className="btn btn-ghost"
+                style={{ width: '100%' }}
+                onClick={() => setViewDetailsExam(null)}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Page>
   );
 }
@@ -798,6 +864,7 @@ export function CreateExam() {
   const [departments, setDepartments] = useState([]);
   const [subjects, setSubjects] = useState([]);
   const [centers, setCenters] = useState([]);
+  const [createdExamResult, setCreatedExamResult] = useState(null);
   const [classOptions, setClassOptions] = useState([
     'SSC-I', 'SSC-II', 'HSC-I', 'HSC-II',
     'SSC-I Supplementary', 'SSC-II Supplementary',
@@ -814,7 +881,6 @@ export function CreateExam() {
     date: '',
     time: '',
     duration: '',
-    roomNo: '',
     centerId: '',
     allCenters: false
   });
@@ -844,9 +910,9 @@ export function CreateExam() {
     }
     setLoading(true);
     try {
-      await api('/exams', { method: 'POST', body: JSON.stringify(form) });
+      const created = await api('/exams', { method: 'POST', body: JSON.stringify(form) });
       showToast('Exam created successfully! ✓', 'success');
-      setTimeout(() => navigate('/admin/exams'), 700);
+      setCreatedExamResult(created);
     } catch (e) {
       showToast(e.message, 'error');
     }
@@ -956,17 +1022,76 @@ export function CreateExam() {
               <input className="input-field" type="number" placeholder="e.g. 180" value={form.duration} onChange={e => set('duration', e.target.value)} />
             </div>
           </div>
-
-          <div className="input-group">
-            <label>Room / Hall No</label>
-            <input className="input-field" placeholder="e.g. Hall A" value={form.roomNo} onChange={e => set('roomNo', e.target.value)} />
-          </div>
         </div>
 
         <button className="btn btn-primary" style={{ marginTop: 18, padding: 14, fontSize: 15 }} onClick={save} disabled={loading}>
           {loading ? 'Creating Exam…' : '✅ Create Exam'}
         </button>
       </div>
+
+      {/* CREATED EXAM DETAILS MODAL */}
+      {createdExamResult && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', padding: 24, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
+            <div style={{ textAlign: 'center', marginBottom: 16 }}>
+              <div style={{ fontSize: 44 }}>✅</div>
+              <div style={{ fontSize: 19, fontWeight: 900, color: '#16a34a', marginTop: 4 }}>Exam Created Successfully!</div>
+              <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 2 }}>Review the details of your newly created exam schedule:</div>
+            </div>
+
+            <div style={{ background: '#f8fafc', borderRadius: 12, border: '1px solid var(--gray-200)', padding: 16, marginBottom: 18, display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, borderBottom: '1px solid #edf2f7', paddingBottom: 6 }}>
+                <span style={{ color: 'var(--gray-500)', fontWeight: 600 }}>Subject & Level:</span>
+                <strong style={{ color: '#0a1f6b' }}>{form.subject} ({form.class})</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, borderBottom: '1px solid #edf2f7', paddingBottom: 6 }}>
+                <span style={{ color: 'var(--gray-500)', fontWeight: 600 }}>Batch / Shift:</span>
+                <strong>{form.academicYear} · {form.shift} Shift</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, borderBottom: '1px solid #edf2f7', paddingBottom: 6 }}>
+                <span style={{ color: 'var(--gray-500)', fontWeight: 600 }}>Department & Term:</span>
+                <strong>{form.department} ({form.term})</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, borderBottom: '1px solid #edf2f7', paddingBottom: 6 }}>
+                <span style={{ color: 'var(--gray-500)', fontWeight: 600 }}>Exam Date:</span>
+                <strong>📅 {form.date}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, borderBottom: '1px solid #edf2f7', paddingBottom: 6 }}>
+                <span style={{ color: 'var(--gray-500)', fontWeight: 600 }}>Scheduled Time:</span>
+                <strong>⏰ {form.time || 'Not specified'}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, borderBottom: '1px solid #edf2f7', paddingBottom: 6 }}>
+                <span style={{ color: 'var(--gray-500)', fontWeight: 600 }}>Duration:</span>
+                <strong>⏱ {form.duration ? `${form.duration} mins (${Math.round(form.duration / 60 * 10) / 10} hrs)` : '180 mins (Standard 3 hrs)'}</strong>
+              </div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                <span style={{ color: 'var(--gray-500)', fontWeight: 600 }}>Assigned Center:</span>
+                <strong>{form.allCenters ? 'All Active Centers' : (centers.find(c => c.id === form.centerId)?.name || 'Center Assigned')}</strong>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              <button
+                className="btn btn-primary"
+                style={{ flex: '1 1 180px', padding: 12 }}
+                onClick={() => navigate('/admin/exams')}
+              >
+                📋 View in Scheduled Exams
+              </button>
+              <button
+                className="btn btn-outline"
+                style={{ flex: '1 1 140px', padding: 12 }}
+                onClick={() => {
+                  setCreatedExamResult(null);
+                  setForm(f => ({ ...f, subject: '', date: '', time: '', duration: '' }));
+                }}
+              >
+                + Create Another Exam
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </Page>
   );
 }
@@ -1082,30 +1207,259 @@ export function CenterManagement() {
 export function AttendanceOverview() {
   const { api } = useApp();
   const [records, setRecords] = useState([]);
+  const [exams, setExams] = useState([]);
+  const [selectedExamId, setSelectedExamId] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
 
-  useEffect(()=>{ api('/attendance').then(setRecords).catch(()=>{}); },[api]);
+  useEffect(() => {
+    Promise.all([
+      api('/attendance').catch(() => []),
+      api('/exams').catch(() => [])
+    ]).then(([attData, examData]) => {
+      if (Array.isArray(attData)) setRecords(attData);
+      if (Array.isArray(examData)) setExams(examData);
+    }).finally(() => setLoading(false));
+  }, [api]);
+
+  const filteredRecords = records.filter(r => {
+    if (selectedExamId && String(r.examId?.id || r.exam_id) !== String(selectedExamId)) {
+      return false;
+    }
+    if (statusFilter !== 'ALL' && r.status !== statusFilter) {
+      return false;
+    }
+    if (!search.trim()) return true;
+    const q = search.toLowerCase();
+    const roll = (r.studentId?.rollNo || '').toLowerCase();
+    const name = (r.studentId?.name || '').toLowerCase();
+    const uid = (r.studentId?.uniqueId || '').toLowerCase();
+    const copy = (r.copyNumber || '').toLowerCase();
+    const subject = (r.examId?.subject || '').toLowerCase();
+    const center = (r.examId?.centerName || '').toLowerCase();
+    const room = (r.classroom || '').toLowerCase();
+    const teacher = (r.teacherId?.name || '').toLowerCase();
+    const school = (r.studentId?.schoolName || '').toLowerCase();
+
+    return (
+      roll.includes(q) ||
+      name.includes(q) ||
+      uid.includes(q) ||
+      copy.includes(q) ||
+      subject.includes(q) ||
+      center.includes(q) ||
+      room.includes(q) ||
+      teacher.includes(q) ||
+      school.includes(q)
+    );
+  });
+
+  const totalCount = records.length;
+  const presentCount = records.filter(r => r.status === 'Present').length;
+  const absentCount = records.filter(r => r.status === 'Absent').length;
+
+  const downloadCSV = () => {
+    if (filteredRecords.length === 0) return;
+    const headers = ['Sr', 'Roll No', 'Student Name', 'Unique ID', 'Class', 'Home School', 'Exam Subject', 'Exam Date', 'Center', 'Room', 'Copy / Sheet No.', 'Status', 'Invigilator', 'Marked Time'];
+    const csvRows = [
+      headers.join(','),
+      ...filteredRecords.map((r, idx) => {
+        const markedTime = r.markedAt 
+          ? new Date(r.markedAt).toLocaleString().replace(/,/g, ' ') 
+          : '—';
+        return [
+          idx + 1,
+          `"${r.studentId?.rollNo || '—'}"`,
+          `"${r.studentId?.name || '—'}"`,
+          `"${r.studentId?.uniqueId || '—'}"`,
+          `"${r.studentId?.class || '—'}"`,
+          `"${r.studentId?.schoolName || '—'}"`,
+          `"${r.examId?.subject || '—'}"`,
+          `"${r.examId?.date || '—'}"`,
+          `"${r.examId?.centerName || '—'}"`,
+          `"${r.classroom || '—'}"`,
+          `"${r.copyNumber || '—'}"`,
+          `"${r.status || 'Present'}"`,
+          `"${r.teacherId?.name || '—'}"`,
+          `"${markedTime}"`
+        ].join(',');
+      })
+    ];
+    const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Attendance_Records_${new Date().toISOString().slice(0,10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
     <Page>
       <Toast />
       <PageHeader title="Attendance Overview" icon="✅" backPath="/admin" />
       <div className="page-content">
-        <div className="wide-grid">
-          {records.length===0 && <div style={{ textAlign:'center', color:'var(--gray-400)', padding:40 }}>No attendance records yet</div>}
-          {records.map(r=>(
-            <div key={r._id} className="att-item" style={{ background:'#fff', borderRadius:12, padding:'10px 14px', border:'1px solid var(--gray-100)' }}>
-              <div className="att-avatar" style={{ background: r.status==='Present' ? '#16a34a' : '#dc2626' }}>{r.studentId?.name?.[0]||'?'}</div>
-              <div>
-                <div className="att-name">{r.studentId?.name}</div>
-                <div className="att-class">{r.examId?.subject} · {r.classroom}</div>
-              </div>
-              <div className="att-right">
-                <div className={`att-status ${r.status==='Present'?'present':'absent'}`}>{r.status}</div>
-                <div className="att-time">{r.teacherId?.name}</div>
-              </div>
-            </div>
-          ))}
+
+        {/* Stats bar */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 10, marginBottom: 16 }}>
+          <div style={{ background: '#fff', borderRadius: 12, padding: '12px 14px', border: '1px solid var(--gray-100)', textAlign: 'center' }}>
+            <div style={{ fontSize: 11, color: 'var(--gray-500)', fontWeight: 600 }}>Total Records</div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: '#0a1f6b', marginTop: 2 }}>{totalCount}</div>
+          </div>
+          <div style={{ background: '#ecfdf5', borderRadius: 12, padding: '12px 14px', border: '1px solid #a7f3d0', textAlign: 'center' }}>
+            <div style={{ fontSize: 11, color: '#047857', fontWeight: 600 }}>Present</div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: '#059669', marginTop: 2 }}>{presentCount}</div>
+          </div>
+          <div style={{ background: '#fef2f2', borderRadius: 12, padding: '12px 14px', border: '1px solid #fecaca', textAlign: 'center' }}>
+            <div style={{ fontSize: 11, color: '#b91c1c', fontWeight: 600 }}>Absent</div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: '#dc2626', marginTop: 2 }}>{absentCount}</div>
+          </div>
         </div>
+
+        {/* Filters Card */}
+        <div style={{ background: '#fff', borderRadius: 14, padding: 16, border: '1px solid var(--gray-100)', marginBottom: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 200px' }}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray-600)', display: 'block', marginBottom: 4 }}>Filter by Exam</label>
+              <select className="input-field" value={selectedExamId} onChange={e => setSelectedExamId(e.target.value)}>
+                <option value="">All Exams</option>
+                {exams.map(e => (
+                  <option key={e.id} value={e.id}>
+                    {e.subject} — {e.class} ({e.date}) {e.centerName ? `[${e.centerName}]` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div style={{ flex: '0 0 130px' }}>
+              <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray-600)', display: 'block', marginBottom: 4 }}>Status</label>
+              <select className="input-field" value={statusFilter} onChange={e => setStatusFilter(e.target.value)}>
+                <option value="ALL">All Status</option>
+                <option value="Present">Present</option>
+                <option value="Absent">Absent</option>
+              </select>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <div style={{ flex: 1 }}>
+              <SearchBar placeholder="Search roll no, copy no, student name, center, room..." value={search} onChange={setSearch} />
+            </div>
+            {filteredRecords.length > 0 && (
+              <button className="btn btn-outline btn-sm" style={{ whiteSpace: 'nowrap', padding: '10px 14px' }} onClick={downloadCSV}>
+                📥 Export CSV
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* List of records */}
+        {loading ? (
+          <div style={{ textAlign: 'center', color: 'var(--gray-400)', padding: 40 }}>Loading attendance records...</div>
+        ) : filteredRecords.length === 0 ? (
+          <div style={{ textAlign: 'center', color: 'var(--gray-400)', padding: 40, background: '#fff', borderRadius: 12 }}>
+            No matching attendance records found.
+          </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            {filteredRecords.map(r => {
+              const studentInitial = (r.studentId?.name && r.studentId?.name !== 'Student') 
+                ? r.studentId.name[0].toUpperCase() 
+                : (r.studentId?.rollNo ? 'R' : 'S');
+              
+              const isPresent = r.status === 'Present';
+
+              return (
+                <div key={r._id || r.id} style={{ background: '#fff', borderRadius: 14, padding: '14px 16px', border: '1px solid var(--gray-100)', boxShadow: '0 2px 6px rgba(0,0,0,0.02)' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                    
+                    {/* Left: Avatar + Student info */}
+                    <div style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+                      <div style={{
+                        width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+                        background: isPresent ? '#dcfce7' : '#fee2e2',
+                        color: isPresent ? '#15803d' : '#b91c1c',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontWeight: 800, fontSize: 16
+                      }}>
+                        {studentInitial}
+                      </div>
+                      <div>
+                        {/* Roll number pill */}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                          <span style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe', borderRadius: 6, padding: '2px 8px', fontSize: 12, fontWeight: 800 }}>
+                            Roll No: {r.studentId?.rollNo || '—'}
+                          </span>
+                          {r.studentId?.uniqueId && r.studentId?.uniqueId !== r.studentId?.rollNo && (
+                            <span style={{ fontSize: 11, color: 'var(--gray-500)', fontWeight: 600 }}>
+                              ID: {r.studentId?.uniqueId}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Student Name */}
+                        {r.studentId?.name && (
+                          <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--gray-900)', marginTop: 4 }}>
+                            {r.studentId?.name}
+                          </div>
+                        )}
+
+                        {/* School & Class */}
+                        <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 2 }}>
+                          {r.studentId?.schoolName ? `🏫 ${r.studentId.schoolName}` : ''} 
+                          {r.studentId?.class ? ` · Class: ${r.studentId.class}` : ''}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Right: Status badge */}
+                    <div style={{ textAlign: 'right' }}>
+                      <span className={`badge ${isPresent ? 'badge-green' : 'badge-red'}`} style={{ fontSize: 11, fontWeight: 800 }}>
+                        {r.status || 'Present'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Divider */}
+                  <div style={{ height: 1, background: 'var(--gray-100)', margin: '10px 0' }} />
+
+                  {/* Bottom meta details: Exam, Center, Room, Copy Number, Invigilator, Time */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '8px 14px', fontSize: 11 }}>
+                    <div>
+                      <span style={{ color: 'var(--gray-400)', fontWeight: 600 }}>Exam: </span>
+                      <strong style={{ color: '#0a1f6b' }}>{r.examId?.subject || '—'}</strong> ({r.examId?.class || '—'})
+                    </div>
+
+                    <div>
+                      <span style={{ color: 'var(--gray-400)', fontWeight: 600 }}>Center / Room: </span>
+                      <strong style={{ color: 'var(--gray-800)' }}>{r.examId?.centerName || '—'}</strong> · Room: <strong style={{ color: '#0a1f6b' }}>{r.classroom || '—'}</strong>
+                    </div>
+
+                    <div>
+                      <span style={{ color: 'var(--gray-400)', fontWeight: 600 }}>Copy No: </span>
+                      <span style={{ background: '#f0fdf4', color: '#166534', border: '1px solid #bbf7d0', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>
+                        {r.copyNumber || '—'}
+                      </span>
+                    </div>
+
+                    <div>
+                      <span style={{ color: 'var(--gray-400)', fontWeight: 600 }}>Marked by: </span>
+                      <span style={{ color: 'var(--gray-700)', fontWeight: 600 }}>{r.teacherId?.name || 'Invigilator'}</span>
+                      {r.markedAt && (
+                        <span style={{ color: 'var(--gray-400)', marginLeft: 4 }}>
+                          ({new Date(r.markedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                </div>
+              );
+            })}
+          </div>
+        )}
+
       </div>
     </Page>
   );
