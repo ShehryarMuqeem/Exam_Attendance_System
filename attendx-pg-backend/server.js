@@ -13,10 +13,15 @@ let dbInitializationPromise = null;
 async function ensureDb() {
   if (!dbInitializationPromise) {
     dbInitializationPromise = (async () => {
-      const client = await pool.connect();
-      client.release();
-      console.log('✅ PostgreSQL connected (Supabase)');
-      await initDB();
+      try {
+        const client = await pool.connect();
+        client.release();
+        console.log('✅ PostgreSQL connected (Supabase)');
+        await initDB();
+      } catch (err) {
+        dbInitializationPromise = null;
+        throw err;
+      }
     })();
   }
   return dbInitializationPromise;
