@@ -14,11 +14,8 @@ const pool = new Pool({
   connectionString,
   ssl: { rejectUnauthorized: false },
 
-  // Without an explicit connectionTimeoutMillis, pool.connect() can hang
-  // indefinitely if the network/host is unreachable — that silently breaks the
-  // server's retry-with-backoff logic in server.js, which depends on the
-  // connection attempt actually failing (and failing promptly) to trigger a retry.
-  connectionTimeoutMillis: 10000,
+  // Increased timeout to 30s to account for latency to remote Supabase regions
+  connectionTimeoutMillis: 30000,
   idleTimeoutMillis: 30000,
   max: parseInt(process.env.DB_POOL_MAX || '20'),
 });
