@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from
 import { AppProvider, useApp } from './context/AppContext';
 
 import { Splash, Login, ForgotPassword } from './pages/AuthPages';
-import { AdminDashboard, SchoolManagement, AddSchool, UserManagement, AddUser, EditUser, ExamManagement, CreateExam, CenterManagement, AttendanceOverview, BatchManagement } from './pages/AdminPages';
+import { AdminDashboard, SchoolManagement, AddSchool, UserManagement, AddUser, EditUser, ExamManagement, CreateExam, CenterManagement, AttendanceOverview, BatchManagement, PasswordResetRequests } from './pages/AdminPages';
 import { SchoolDashboard, SchoolStudents, SchoolTeachers, AddSchoolTeacher, SchoolAssignDuty, SchoolCenterDetails } from './pages/SchoolPages';
 import { TeacherDashboard, MarkAttendance, AttendanceReport, AbsentReport, DutySlip } from './pages/TeacherPages';
 import { StudentDashboard } from './pages/StudentPages';
@@ -12,13 +12,14 @@ import { AnalyticsDashboard } from './pages/AnalyticsPage';
 // ===== NAV CONFIG =====
 const NAV_LINKS = {
   BoardAdmin: [
-    { path:'/admin',            icon:'🏠', label:'Home'      },
-    { path:'/admin/schools',    icon:'🏫', label:'Schools'   },
-    { path:'/admin/exams',      icon:'📋', label:'Exams'     },
-    { path:'/admin/batches',    icon:'📅', label:'Batches'   },
-    { path:'/admin/users',      icon:'👥', label:'Users'     },
-    { path:'/admin/centers',    icon:'📍', label:'Centers'   },
-    { path:'/admin/analytics',  icon:'📊', label:'Analytics' },
+    { path:'/admin',                   icon:'🏠', label:'Home'      },
+    { path:'/admin/schools',           icon:'🏫', label:'Schools'   },
+    { path:'/admin/exams',             icon:'📋', label:'Exams'     },
+    { path:'/admin/batches',           icon:'📅', label:'Batches'   },
+    { path:'/admin/users',             icon:'👥', label:'Users'     },
+    { path:'/admin/password-requests', icon:'🔐', label:'Resets'    },
+    { path:'/admin/centers',           icon:'📍', label:'Centers'   },
+    { path:'/admin/analytics',         icon:'📊', label:'Analytics' },
   ],
   SchoolAdmin: [
     { path:'/school',           icon:'🏠', label:'Home'     },
@@ -256,6 +257,7 @@ function AppRoutes() {
         <Route path="/admin/users"            element={<ProtectedRoute requiredRole="BoardAdmin"><UserManagement /></ProtectedRoute>} />
         <Route path="/admin/users/add"        element={<ProtectedRoute requiredRole="BoardAdmin"><AddUser /></ProtectedRoute>} />
         <Route path="/admin/users/edit/:id"   element={<ProtectedRoute requiredRole="BoardAdmin"><EditUser /></ProtectedRoute>} />
+        <Route path="/admin/password-requests" element={<ProtectedRoute requiredRole="BoardAdmin"><PasswordResetRequests /></ProtectedRoute>} />
         <Route path="/admin/exams"            element={<ProtectedRoute requiredRole="BoardAdmin"><ExamManagement /></ProtectedRoute>} />
         <Route path="/admin/exams/create"     element={<ProtectedRoute requiredRole="BoardAdmin"><CreateExam /></ProtectedRoute>} />
         <Route path="/admin/batches"          element={<ProtectedRoute requiredRole="BoardAdmin"><BatchManagement /></ProtectedRoute>} />
