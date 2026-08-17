@@ -32,7 +32,7 @@ router.get('/roster', protect, requireRole('Teacher'), async (req, res) => {
       'SELECT home_school_id FROM center_assignments WHERE center_school_id=$1',
       [exam.center_id]
     );
-    const schoolIds = [exam.center_id, ...homeSchools.map(h => h.home_school_id)];
+    const schoolIds = Array.from(new Set([exam.center_id, ...homeSchools.map(h => h.home_school_id)]));
 
     const { rows: students } = await pool.query(
       `SELECT id, name, unique_id, roll_no, class, section, school_id
@@ -55,11 +55,25 @@ router.get('/roster', protect, requireRole('Teacher'), async (req, res) => {
       };
     });
 
+    // Deduplicate students by roll_no and unique_id so no duplicate roll numbers appear
+    const seenRolls = new Set();
+    const seenUids = new Set();
+    const uniqueStudents = [];
+    for (const s of students) {
+      const rollKey = (s.roll_no || '').trim().toLowerCase();
+      const uidKey = (s.unique_id || '').trim().toLowerCase();
+      if (rollKey && seenRolls.has(rollKey)) continue;
+      if (uidKey && seenUids.has(uidKey)) continue;
+      if (rollKey) seenRolls.add(rollKey);
+      if (uidKey) seenUids.add(uidKey);
+      uniqueStudents.push(s);
+    }
+
     // Filter students by room allocation:
     // They must either be explicitly assigned to the teacher's classroom, OR
     // have NO classroom assigned yet (not present in attendanceMap).
     const teacherClassroom = duties[0].classroom;
-    const filteredStudents = students.filter(s => {
+    const filteredStudents = uniqueStudents.filter(s => {
       const att = attendanceMap[s.id];
       if (!att) return true; // Unallocated student
       return att.classroom === teacherClassroom; // Allocated to this room
@@ -151,7 +165,7 @@ router.patch('/unlock/:examId', protect, requireRole('BoardAdmin'), async (req, 
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
-// GET auto-detect current exam for a teacher (generous time window + full assigned list)
+// GET auto-detect current exam for a teacher (strict date & time window, no past fallbacks)
 router.get('/current-exam', protect, requireRole('Teacher'), async (req, res) => {
   try {
     let currentDate = req.query.date;
@@ -182,7 +196,7 @@ router.get('/current-exam', protect, requireRole('Teacher'), async (req, res) =>
       nowMins = now.getHours() * 60 + now.getMinutes();
     }
 
-    // 1. Try to find exam active today within a generous window
+    // Only consider exams scheduled for TODAY that are not Locked
     const todayDuties = duties.filter(d => d.date === currentDate && d.exam_status !== 'Locked');
 
     for (const duty of todayDuties) {
@@ -190,29 +204,22 @@ router.get('/current-exam', protect, requireRole('Teacher'), async (req, res) =>
         const [h, m] = duty.time.split(':').map(Number);
         const examStart = h * 60 + m;
         const examDuration = Number(duty.duration) || 180;
-        // Allow attendance from 2 hours before start until 3 hours after end
-        const windowStart = Math.max(0, examStart - 120);
-        const windowEnd = examStart + examDuration + 180;
+        const examEnd = examStart + examDuration;
+        // Allow attendance marking from 30 mins before start until 30 mins after end
+        const windowStart = Math.max(0, examStart - 30);
+        const windowEnd = examEnd + 30;
         if (nowMins >= windowStart && nowMins <= windowEnd) {
           currentExam = duty;
           break;
         }
+      } else {
+        // If no specific time was set for today's exam, consider it current for today
+        currentExam = duty;
+        break;
       }
     }
 
-    // 2. If no time-matched exam, but teacher has an exam today, use the first today duty
-    if (!currentExam && todayDuties.length > 0) {
-      currentExam = todayDuties[0];
-    }
-
-    // 3. If still no exam, but teacher has any non-locked assigned duties, fallback to the latest one
-    if (!currentExam && duties.length > 0) {
-      const unlocked = duties.filter(d => d.exam_status !== 'Locked');
-      if (unlocked.length > 0) {
-        currentExam = unlocked[0];
-      }
-    }
-
+    // Do NOT fallback to past or future exams or exams whose time has passed
     res.json({
       currentExam,
       assignedExams: duties
@@ -232,17 +239,34 @@ router.get('/absent-list', protect, requireRole('Teacher','BoardAdmin','SchoolAd
       'SELECT home_school_id FROM center_assignments WHERE center_school_id=$1',
       [exam.center_id]
     );
-    const schoolIds = [exam.center_id, ...homeSchools.map(h => h.home_school_id)];
+    const schoolIds = Array.from(new Set([exam.center_id, ...homeSchools.map(h => h.home_school_id)]));
 
     const { rows: students } = await pool.query(
-      `SELECT id,name,unique_id,roll_no,class FROM users WHERE role='Student' AND class=$1 AND school_id = ANY($2::int[])`,
+      `SELECT id,name,unique_id,roll_no,class FROM users 
+       WHERE role='Student' AND class=$1 AND school_id = ANY($2::int[])
+       ORDER BY CAST(NULLIF(regexp_replace(roll_no, '[^0-9]', '', 'g'), '') AS INTEGER) NULLS LAST, name`,
       [exam.class, schoolIds]
     );
+
+    // Deduplicate students list
+    const seenRolls = new Set();
+    const seenUids = new Set();
+    const uniqueStudents = [];
+    for (const s of students) {
+      const rollKey = (s.roll_no || '').trim().toLowerCase();
+      const uidKey = (s.unique_id || '').trim().toLowerCase();
+      if (rollKey && seenRolls.has(rollKey)) continue;
+      if (uidKey && seenUids.has(uidKey)) continue;
+      if (rollKey) seenRolls.add(rollKey);
+      if (uidKey) seenUids.add(uidKey);
+      uniqueStudents.push(s);
+    }
+
     const { rows: present } = await pool.query(
       "SELECT student_id FROM attendance WHERE exam_id=$1 AND status='Present'", [examId]
     );
     const presentIds = new Set(present.map(p => p.student_id));
-    const absentList = students.filter(s => !presentIds.has(s.id)).map((s, i) => ({
+    const absentList = uniqueStudents.filter(s => !presentIds.has(s.id)).map((s, i) => ({
       srNo: i + 1, name: s.name, uniqueId: s.unique_id, rollNo: s.roll_no || '—', class: s.class,
     }));
     res.json(absentList);
@@ -319,88 +343,106 @@ router.get('/', protect, requireRole('BoardAdmin','SchoolAdmin'), async (req, re
 });
 
 // ===== QR SCAN ROUTES =====
-// The student's Admit Card QR = their unique_id (e.g. STU-001)
+// The student's Admit Card QR = their unique_id or roll_no (e.g. STU-001 or 1001)
 // No separate admit_cards table needed — the QR is printed on the
-// student's admit card by the Board before exams, containing their unique_id.
+// student's admit card by the Board before exams, containing their unique_id or roll_no.
 // Answer Sheet QR = any QR code on the answer sheet, recorded as copy_number.
 
-// POST Step 1 — verify admit card QR (student unique_id)
+// POST Step 1 — verify admit card QR (student unique_id or roll_no)
 router.post('/verify-admit-qr', protect, requireRole('Teacher'), async (req, res) => {
   try {
     const { qrAdmitScanned, examId } = req.body;
     if (!qrAdmitScanned) return res.status(400).json({ valid: false, message: 'Admit card QR required' });
     if (!examId) return res.status(400).json({ valid: false, message: 'No active exam selected' });
 
-    const cleanQr = typeof qrAdmitScanned === 'string' ? qrAdmitScanned.trim() : qrAdmitScanned;
-
-    // Look up student by their unique_id (what's encoded in the admit card QR)
-    let { rows: students } = await pool.query(
-      `SELECT u.*, s.name as school_name
-       FROM users u LEFT JOIN schools s ON u.school_id = s.id
-       WHERE UPPER(TRIM(u.unique_id)) = UPPER($1) AND u.role = 'Student'`,
-      [cleanQr]
-    );
-    if (!students[0]) {
-      // Check exam exists
-      const { rows: examRows } = await pool.query('SELECT * FROM exams WHERE id=$1', [examId]);
-      if (!examRows[0]) return res.status(404).json({ valid: false, message: '❌ Exam not found' });
-      const exam = examRows[0];
-
-      // Clean up dynamic unique_id to be safe and unique (VARCHAR(20))
-      const safeUniqueId = cleanQr.substring(0, 20);
-
-      // Check if this unique_id exists as a non-Student role to avoid unique_id conflict
-      const { rows: existingUser } = await pool.query('SELECT * FROM users WHERE unique_id=$1', [safeUniqueId]);
-      if (existingUser[0]) {
-        return res.status(400).json({
-          valid: false,
-          message: `❌ Unique ID '${safeUniqueId}' already belongs to a ${existingUser[0].role}.`
-        });
-      }
-
-      // Generate a unique username for this student
-      const usernameBase = `student_${safeUniqueId.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
-      let finalUsername = usernameBase;
-      if (finalUsername.length > 80) {
-        finalUsername = finalUsername.substring(0, 80);
-      }
-      finalUsername = `${finalUsername}_${Date.now()}`;
-
-      const placeholderPasswordHash = await bcrypt.hash('Student@2026', 10);
-      const studentName = '';
-
-      // Insert new student dynamically under the exam's center school and class, setting roll_no to safeUniqueId
-      const { rows: newStudentRows } = await pool.query(
-        `INSERT INTO users (unique_id, name, username, password, role, school_id, class, roll_no, status)
-         VALUES ($1, $2, $3, $4, 'Student', $5, $6, $7, 'Active')
-         RETURNING *`,
-        [
-          safeUniqueId,
-          studentName,
-          finalUsername,
-          placeholderPasswordHash,
-          exam.center_id,
-          exam.class,
-          safeUniqueId
-        ]
-      );
-      
-      // Query the user again with school_name LEFT JOIN to match expected structure
-      const { rows: reloadedStudents } = await pool.query(
-        `SELECT u.*, s.name as school_name
-         FROM users u LEFT JOIN schools s ON u.school_id = s.id
-         WHERE u.id = $1`,
-        [newStudentRows[0].id]
-      );
-      students = reloadedStudents;
-    }
-    const student = students[0];
+    const cleanQr = typeof qrAdmitScanned === 'string' ? qrAdmitScanned.trim() : String(qrAdmitScanned).trim();
 
     // Check exam exists and not locked
     const { rows: examRows } = await pool.query('SELECT * FROM exams WHERE id=$1', [examId]);
     if (!examRows[0]) return res.status(404).json({ valid: false, message: '❌ Exam not found' });
     const exam = examRows[0];
     if (exam.status === 'Locked') return res.status(403).json({ valid: false, message: '🔒 Attendance is locked for this exam.' });
+
+    // Look up student by unique_id OR roll_no in center-assigned schools for this exam
+    const { rows: homeSchools } = await pool.query(
+      'SELECT home_school_id FROM center_assignments WHERE center_school_id=$1',
+      [exam.center_id]
+    );
+    const schoolIds = Array.from(new Set([exam.center_id, ...homeSchools.map(h => h.home_school_id)]));
+
+    let { rows: students } = await pool.query(
+      `SELECT u.*, s.name as school_name
+       FROM users u LEFT JOIN schools s ON u.school_id = s.id
+       WHERE (UPPER(TRIM(u.unique_id)) = UPPER($1) OR UPPER(TRIM(u.roll_no)) = UPPER($1))
+         AND u.role = 'Student'
+         AND u.class = $2
+         AND u.school_id = ANY($3::int[])
+       ORDER BY (UPPER(TRIM(u.unique_id)) = UPPER($1)) DESC, u.id ASC`,
+      [cleanQr, exam.class, schoolIds]
+    );
+
+    // If not found in center schools, check if student exists across all schools
+    if (!students[0]) {
+      const { rows: globalStudents } = await pool.query(
+        `SELECT u.*, s.name as school_name
+         FROM users u LEFT JOIN schools s ON u.school_id = s.id
+         WHERE (UPPER(TRIM(u.unique_id)) = UPPER($1) OR UPPER(TRIM(u.roll_no)) = UPPER($1))
+           AND u.role = 'Student'
+         ORDER BY (UPPER(TRIM(u.unique_id)) = UPPER($1)) DESC, u.id ASC`,
+        [cleanQr]
+      );
+      if (globalStudents[0]) {
+        students = globalStudents;
+      }
+    }
+
+    if (!students[0]) {
+      // Check if duplicate roll_no exists in this exam's center/class to avoid duplicating
+      const safeUniqueId = cleanQr.substring(0, 20);
+      const { rows: duplicateCheck } = await pool.query(
+        `SELECT id FROM users 
+         WHERE role = 'Student' AND school_id = $1 AND class = $2 
+           AND (UPPER(TRIM(roll_no)) = UPPER($3) OR UPPER(TRIM(unique_id)) = UPPER($4))`,
+        [exam.center_id, exam.class, cleanQr, safeUniqueId]
+      );
+
+      if (duplicateCheck.length > 0) {
+        const { rows: reloaded } = await pool.query(
+          `SELECT u.*, s.name as school_name FROM users u LEFT JOIN schools s ON u.school_id = s.id WHERE u.id = $1`,
+          [duplicateCheck[0].id]
+        );
+        students = reloaded;
+      } else {
+        // Insert new student dynamically under the exam's center school and class
+        const usernameBase = `student_${safeUniqueId.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+        let finalUsername = usernameBase.slice(0, 50) + `_${Date.now()}`;
+        const placeholderPasswordHash = await bcrypt.hash('Student@2026', 10);
+
+        const { rows: newStudentRows } = await pool.query(
+          `INSERT INTO users (unique_id, name, username, password, role, school_id, class, roll_no, status)
+           VALUES ($1, $2, $3, $4, 'Student', $5, $6, $7, 'Active')
+           RETURNING *`,
+          [
+            safeUniqueId,
+            '',
+            finalUsername,
+            placeholderPasswordHash,
+            exam.center_id,
+            exam.class,
+            cleanQr
+          ]
+        );
+        
+        const { rows: reloadedStudents } = await pool.query(
+          `SELECT u.*, s.name as school_name
+           FROM users u LEFT JOIN schools s ON u.school_id = s.id
+           WHERE u.id = $1`,
+          [newStudentRows[0].id]
+        );
+        students = reloadedStudents;
+      }
+    }
+    const student = students[0];
 
     // Validate student's class matches the exam class
     if (student.class !== exam.class) {

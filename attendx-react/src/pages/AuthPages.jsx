@@ -227,22 +227,174 @@ export function Login() {
 
 export function ForgotPassword() {
   const navigate = useNavigate();
+  const { api, showToast } = useApp();
+  const [role, setRole] = useState('Teacher');
+  const [identifier, setIdentifier] = useState('');
+  const [phone, setPhone] = useState('');
+  const [note, setNote] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [resultMsg, setResultMsg] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!identifier.trim()) {
+      showToast('Please enter your Username, Unique ID, or Email', 'error');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await api('/auth/forgot-password', {
+        method: 'POST',
+        body: JSON.stringify({
+          identifier: identifier.trim(),
+          role,
+          phone: phone.trim() || undefined,
+          note: note.trim() || undefined,
+        })
+      });
+      setSubmitted(true);
+      setResultMsg(res.message || 'Request submitted successfully.');
+      showToast('✅ Reset request sent to Board Admin!', 'success');
+    } catch (err) {
+      showToast(err.message || 'Failed to submit reset request', 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <Page>
-      <div style={{ background:'var(--header-grad)', minHeight:160, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-        <h1 style={{ color:'#fff', fontSize:22, fontWeight:900, letterSpacing:2 }}>ATTEND<span style={{ color:'#4ade80' }}>X</span></h1>
-      </div>
-      <div style={{ flex:1, padding:24, display:'flex', flexDirection:'column', gap:16, alignItems:'center', justifyContent:'center' }}>
-        <div style={{ fontSize:48 }}>🔐</div>
-        <h3 style={{ fontSize:18, fontWeight:800, textAlign:'center', color:'var(--gray-900)' }}>Forgot Password?</h3>
-        <div style={{ background:'#f0f4ff', border:'1px solid #c7d7ff', borderRadius:14, padding:18, width:'100%' }}>
-          <p style={{ fontSize:13, color:'var(--gray-700)', lineHeight:1.7, textAlign:'center', margin:0 }}>
-            Password resets are handled by the <strong style={{ color:'#0a1f6b' }}>System Administrator</strong>.
-            <br/><br/>
-            Contact your Admin to reset your password. They can update it from the User Management panel.
-          </p>
+      <div style={{ background:'var(--header-grad)', minHeight:130, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', flexShrink:0, padding: 16 }}>
+        <h1 style={{ color:'#fff', fontSize:22, fontWeight:900, letterSpacing:2, margin:0 }}>
+          ATTEND<span style={{ color:'#4ade80' }}>X</span>
+        </h1>
+        <div style={{ color:'rgba(255,255,255,0.7)', fontSize:11, marginTop:4, letterSpacing:0.5 }}>
+          Password Reset Request Portal
         </div>
-        <button className="btn btn-primary" style={{ width:'100%' }} onClick={()=>navigate('/login')}>Back to Login</button>
+      </div>
+
+      <div style={{ flex:1, padding: 24, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', maxWidth: 480, margin: '0 auto', width: '100%' }}>
+        {submitted ? (
+          <div style={{ background:'#fff', borderRadius:16, border:'2px solid #16a34a', padding:24, textAlign:'center', width:'100%', boxShadow:'0 4px 20px rgba(0,0,0,0.06)' }}>
+            <div style={{ fontSize:52, marginBottom:10 }}>📨</div>
+            <h2 style={{ fontSize:18, fontWeight:800, color:'#14532d', marginBottom:8 }}>Request Submitted to Board</h2>
+            <div style={{ background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:12, padding:14, marginBottom:16, textAlign:'left' }}>
+              <p style={{ fontSize:12, color:'#166534', lineHeight:1.6, margin:0 }}>
+                {resultMsg}
+              </p>
+            </div>
+            <p style={{ fontSize:11, color:'var(--gray-500)', lineHeight:1.6, marginBottom:20 }}>
+              The Board Administrator will review your account details and update your password. Once updated, you can log in with the new credentials.
+            </p>
+            <button className="btn btn-primary" style={{ width:'100%' }} onClick={() => navigate('/login')}>
+              ← Back to Sign In
+            </button>
+          </div>
+        ) : (
+          <div style={{ background:'#fff', borderRadius:16, border:'1px solid var(--gray-200)', padding:28, width:'100%', boxShadow:'0 4px 24px rgba(0,0,0,0.06)' }}>
+            <div style={{ textAlign:'center', marginBottom:20 }}>
+              <div style={{ fontSize:40, marginBottom:6 }}>🔐</div>
+              <h2 style={{ fontSize:20, fontWeight:800, color:'var(--gray-900)', margin:0 }}>Forgot Your Password?</h2>
+              <p style={{ fontSize:12, color:'var(--gray-500)', marginTop:4 }}>
+                Submit a request directly to the Board Administrator to reset your password.
+              </p>
+            </div>
+
+            <form onSubmit={handleSubmit} style={{ display:'flex', flexDirection:'column', gap:14 }}>
+              <div>
+                <label style={{ fontSize:11, fontWeight:700, color:'var(--gray-600)', display:'block', marginBottom:6 }}>
+                  Select Your Account Role
+                </label>
+                <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                  <button
+                    type="button"
+                    onClick={() => setRole('Teacher')}
+                    style={{
+                      padding:'10px 12px', borderRadius:10, fontSize:12, fontWeight:700, cursor:'pointer',
+                      border: role === 'Teacher' ? '2px solid #0891b2' : '1px solid var(--gray-200)',
+                      background: role === 'Teacher' ? '#ecfeff' : '#fff',
+                      color: role === 'Teacher' ? '#0891b2' : 'var(--gray-700)',
+                    }}
+                  >
+                    👩‍🏫 Teacher
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setRole('SchoolAdmin')}
+                    style={{
+                      padding:'10px 12px', borderRadius:10, fontSize:12, fontWeight:700, cursor:'pointer',
+                      border: role === 'SchoolAdmin' ? '2px solid #0a1f6b' : '1px solid var(--gray-200)',
+                      background: role === 'SchoolAdmin' ? '#e0f2fe' : '#fff',
+                      color: role === 'SchoolAdmin' ? '#0a1f6b' : 'var(--gray-700)',
+                    }}
+                  >
+                    🏫 School Admin
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize:11, fontWeight:700, color:'var(--gray-600)', display:'block', marginBottom:4 }}>
+                  Username, Unique ID, or Registered Email *
+                </label>
+                <input
+                  className="input-bare"
+                  type="text"
+                  placeholder={role === 'Teacher' ? 'e.g. tchr_smith or TCHR-001' : 'e.g. school_admin or SCH-001'}
+                  value={identifier}
+                  onChange={e => setIdentifier(e.target.value)}
+                  required
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize:11, fontWeight:700, color:'var(--gray-600)', display:'block', marginBottom:4 }}>
+                  Contact Phone Number (Optional)
+                </label>
+                <input
+                  className="input-bare"
+                  type="tel"
+                  placeholder="e.g. +92 300 1234567"
+                  value={phone}
+                  onChange={e => setPhone(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize:11, fontWeight:700, color:'var(--gray-600)', display:'block', marginBottom:4 }}>
+                  Additional Note / School Details (Optional)
+                </label>
+                <textarea
+                  className="input-bare"
+                  rows={3}
+                  placeholder="e.g. Central High School teacher, lost access to account"
+                  value={note}
+                  onChange={e => setNote(e.target.value)}
+                  style={{ resize:'vertical' }}
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={loading}
+                style={{ marginTop:6, padding:'12px', fontSize:14, fontWeight:700 }}
+              >
+                {loading ? 'Submitting Request...' : '🔔 Notify Board Admin to Reset'}
+              </button>
+
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => navigate('/login')}
+                style={{ textAlign:'center', marginTop:2 }}
+              >
+                ← Back to Login
+              </button>
+            </form>
+          </div>
+        )}
       </div>
     </Page>
   );

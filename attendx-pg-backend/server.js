@@ -145,6 +145,24 @@ async function initDB() {
         year_name VARCHAR(50) UNIQUE NOT NULL,
         created_at TIMESTAMP DEFAULT NOW()
       );
+
+      CREATE TABLE IF NOT EXISTS password_reset_requests (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+        username VARCHAR(100) NOT NULL,
+        name VARCHAR(100),
+        role VARCHAR(20) NOT NULL,
+        school_id INTEGER REFERENCES schools(id) ON DELETE SET NULL,
+        school_name VARCHAR(100),
+        phone VARCHAR(30),
+        email VARCHAR(100),
+        note TEXT,
+        status VARCHAR(20) DEFAULT 'Pending' CHECK (status IN ('Pending','Resolved','Rejected')),
+        requested_at TIMESTAMP DEFAULT NOW(),
+        resolved_at TIMESTAMP,
+        resolved_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        new_password_plain VARCHAR(100)
+      );
     `);
 
     // Seed default academic years if empty

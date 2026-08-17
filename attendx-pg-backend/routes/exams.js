@@ -8,13 +8,37 @@ async function nextExamId() {
   return `EXAM-${new Date().getFullYear()}-${String(rows[0].n).padStart(3,'0')}`;
 }
 
+function computeExamStatus(e) {
+  if (e.status === 'Locked') return 'Locked';
+  if (!e.date) return e.status || 'Scheduled';
+
+  const now = new Date();
+  const todayStr = now.toLocaleDateString('en-CA');
+  const nowMins = now.getHours() * 60 + now.getMinutes();
+
+  if (e.date < todayStr) {
+    return 'Done';
+  } else if (e.date > todayStr) {
+    return 'Scheduled';
+  } else {
+    // e.date === todayStr
+    if (!e.time) return 'Ongoing';
+    const [h, m] = e.time.split(':').map(Number);
+    const examStart = h * 60 + m;
+    const examEnd = examStart + (Number(e.duration) || 180);
+    if (nowMins < examStart) return 'Scheduled';
+    if (nowMins > examEnd) return 'Done';
+    return 'Ongoing';
+  }
+}
+
 function mapExam(e) {
   return {
     _id: e.id, id: e.id, examId: e.exam_id,
     academicYear: e.academic_year, term: e.term, shift: e.shift,
     department: e.department, subject: e.subject, class: e.class,
     date: e.date, time: e.time, duration: e.duration, roomNo: e.room_no,
-    status: e.status, classroom: e.classroom,
+    status: computeExamStatus(e), classroom: e.classroom,
     centerId: e.center_id, centerName: e.center_school_name,
   };
 }
@@ -228,7 +252,7 @@ router.get('/:id/roster', protect, requireRole('SchoolAdmin','BoardAdmin'), asyn
       'SELECT home_school_id FROM center_assignments WHERE center_school_id=$1',
       [exam.center_id]
     );
-    const schoolIds = [exam.center_id, ...homeSchools.map(h => h.home_school_id)];
+    const schoolIds = Array.from(new Set([exam.center_id, ...homeSchools.map(h => h.home_school_id)]));
 
     // Fetch all students matching exam class & school list & academic year
     const { rows: students } = await pool.query(
@@ -249,7 +273,21 @@ router.get('/:id/roster', protect, requireRole('SchoolAdmin','BoardAdmin'), asyn
       attendanceMap[a.student_id] = { classroom: a.classroom, status: a.status };
     });
 
-    res.json(students.map((s, i) => ({
+    // Deduplicate students list so no roll number appears more than once
+    const seenRolls = new Set();
+    const seenUids = new Set();
+    const uniqueStudents = [];
+    for (const s of students) {
+      const rollKey = (s.roll_no || '').trim().toLowerCase();
+      const uidKey = (s.unique_id || '').trim().toLowerCase();
+      if (rollKey && seenRolls.has(rollKey)) continue;
+      if (uidKey && seenUids.has(uidKey)) continue;
+      if (rollKey) seenRolls.add(rollKey);
+      if (uidKey) seenUids.add(uidKey);
+      uniqueStudents.push(s);
+    }
+
+    res.json(uniqueStudents.map((s, i) => ({
       srNo: i + 1,
       id: s.id,
       name: s.name,

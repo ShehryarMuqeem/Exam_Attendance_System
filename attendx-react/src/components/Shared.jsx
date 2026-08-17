@@ -177,10 +177,11 @@ export function BottomNav({ role }) {
     Admin: [
       { path: '/admin',           icon: '🏠', label: 'Home'      },
       { path: '/admin/schools',   icon: '🏫', label: 'Schools'   },
-      { path: '/admin/exams',     icon: '📋', label: 'Exams'     },
-      { path: '/admin/users',     icon: '👥', label: 'Users'     },
-      { path: '/admin/centers',   icon: '📍', label: 'Centers'   },
-      { path: '/admin/analytics', icon: '📊', label: 'Analytics' },
+      { path: '/admin/exams',             icon: '📋', label: 'Exams'     },
+      { path: '/admin/users',             icon: '👥', label: 'Users'     },
+      { path: '/admin/password-requests', icon: '🔐', label: 'Resets'    },
+      { path: '/admin/centers',           icon: '📍', label: 'Centers'   },
+      { path: '/admin/analytics',         icon: '📊', label: 'Analytics' },
     ],
     School: [
       { path: '/school',          icon: '🏠', label: 'Home'     },

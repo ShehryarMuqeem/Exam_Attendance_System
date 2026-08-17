@@ -18,7 +18,7 @@ function examStatusBadge(s) {
 export function AdminDashboard() {
   const navigate = useNavigate();
   const { api, currentUser } = useApp();
-  const [stats, setStats] = useState({ schools:0, teachers:0, students:0, exams:0 });
+  const [stats, setStats] = useState({ schools:0, teachers:0, students:0, exams:0, pendingResets:0 });
 
   useEffect(() => {
     Promise.all([
@@ -26,8 +26,15 @@ export function AdminDashboard() {
       api('/users?role=Teacher').catch(()=>[]),
       api('/users?role=Student').catch(()=>[]),
       api('/exams').catch(()=>[]),
-    ]).then(([schools, teachers, students, exams]) => {
-      setStats({ schools: schools.length, teachers: teachers.length, students: students.length, exams: exams.length });
+      api('/auth/password-reset-requests/count').catch(()=>({ pendingCount: 0 })),
+    ]).then(([schools, teachers, students, exams, resetCount]) => {
+      setStats({
+        schools: schools.length,
+        teachers: teachers.length,
+        students: students.length,
+        exams: exams.length,
+        pendingResets: resetCount.pendingCount || 0
+      });
     });
   }, [api]);
 
@@ -39,13 +46,14 @@ export function AdminDashboard() {
   ];
 
   const actions = [
-    { label:'Manage Schools',     icon:'🏫', path:'/admin/schools',   desc:'Add, edit, and manage registered schools' },
-    { label:'Manage Users',       icon:'👥', path:'/admin/users',     desc:'Teachers and students across all schools' },
-    { label:'Manage Exams',       icon:'📋', path:'/admin/exams',     desc:'Year → Term → Department → Subject hierarchy' },
-    { label:'Manage Batches',     icon:'📅', path:'/admin/batches',   desc:'Add and manage academic year batches (e.g. 2026-2027)' },
-    { label:'Examination Centers',icon:'📍', path:'/admin/centers',   desc:'Assign schools as exam centers for other schools' },
-    { label:'Attendance Overview',icon:'✅', path:'/admin/attendance',desc:'View attendance records across all exams' },
-    { label:'Analytics',          icon:'📊', path:'/admin/analytics', desc:'Attendance rates and trends' },
+    { label:'Manage Schools',         icon:'🏫', path:'/admin/schools',           desc:'Add, edit, and manage registered schools' },
+    { label:'Manage Users',           icon:'👥', path:'/admin/users',             desc:'Teachers and students across all schools' },
+    { label:'Password Reset Requests',icon:'🔐', path:'/admin/password-requests', desc:'Review and reset forgotten passwords for staff & teachers', badge: stats.pendingResets },
+    { label:'Manage Exams',           icon:'📋', path:'/admin/exams',             desc:'Year → Term → Department → Subject hierarchy' },
+    { label:'Manage Batches',         icon:'📅', path:'/admin/batches',           desc:'Add and manage academic year batches (e.g. 2026-2027)' },
+    { label:'Examination Centers',    icon:'📍', path:'/admin/centers',           desc:'Assign schools as exam centers for other schools' },
+    { label:'Attendance Overview',    icon:'✅', path:'/admin/attendance',        desc:'View attendance records across all exams' },
+    { label:'Analytics',              icon:'📊', path:'/admin/analytics',         desc:'Attendance rates and trends' },
   ];
 
   return (
@@ -53,9 +61,45 @@ export function AdminDashboard() {
       <Toast />
       <AmsHeader title="Board Admin Panel" subtitle="Manage schools, exams, centers, and attendance across the board." />
       <div className="page-content">
-        <div style={{ background:'#e0e8ff', borderRadius:12, padding:'10px 14px', marginBottom:16, fontSize:12, color:'#0a1f6b', fontWeight:600 }}>
+        <div style={{ background:'#e0e8ff', borderRadius:12, padding:'10px 14px', marginBottom:14, fontSize:12, color:'#0a1f6b', fontWeight:600 }}>
           👋 Welcome, {currentUser?.name}
         </div>
+
+        {/* Real-time Password Reset Notification Banner */}
+        {stats.pendingResets > 0 && (
+          <div 
+            onClick={() => navigate('/admin/password-requests')}
+            style={{ 
+              background: '#fff1f2', 
+              border: '2px solid #e11d48', 
+              borderRadius: 14, 
+              padding: '14px 16px', 
+              marginBottom: 16, 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between',
+              cursor: 'pointer',
+              boxShadow: '0 4px 14px rgba(225,29,72,0.12)',
+              animation: 'pulse 2s infinite'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ fontSize: 28 }}>🔔</div>
+              <div>
+                <div style={{ fontWeight: 800, fontSize: 13, color: '#9f1239' }}>
+                  {stats.pendingResets} Password Reset Request{stats.pendingResets > 1 ? 's' : ''} Pending!
+                </div>
+                <div style={{ fontSize: 11, color: '#be123c', marginTop: 2 }}>
+                  Teachers or School Admins have requested password resets. Click to review & update.
+                </div>
+              </div>
+            </div>
+            <div style={{ background: '#e11d48', color: '#fff', padding: '6px 12px', borderRadius: 8, fontSize: 11, fontWeight: 800, flexShrink: 0 }}>
+              Review Now →
+            </div>
+          </div>
+        )}
+
         <div className="wide-grid" style={{ gridTemplateColumns:'repeat(2, 1fr)', marginBottom:18 }}>
           {cards.map(c => (
             <div key={c.label} onClick={()=>navigate(c.path)} style={{ background:'#fff', borderRadius:14, padding:16, border:'1px solid var(--gray-100)', cursor:'pointer', textAlign:'center' }}>
@@ -70,7 +114,14 @@ export function AdminDashboard() {
             <div key={a.label} onClick={()=>navigate(a.path)} style={{ background:'#fff', borderRadius:14, padding:'16px', border:'1px solid var(--gray-100)', cursor:'pointer', display:'flex', alignItems:'center', gap:14 }}>
               <div style={{ fontSize:26 }}>{a.icon}</div>
               <div>
-                <div style={{ fontWeight:700, fontSize:13 }}>{a.label}</div>
+                <div style={{ fontWeight:700, fontSize:13, display:'flex', alignItems:'center', gap:8 }}>
+                  {a.label}
+                  {a.badge > 0 && (
+                    <span style={{ background:'#e11d48', color:'#fff', borderRadius:10, padding:'1px 7px', fontSize:10, fontWeight:800 }}>
+                      {a.badge} new
+                    </span>
+                  )}
+                </div>
                 <div style={{ fontSize:11, color:'var(--gray-500)', marginTop:2 }}>{a.desc}</div>
               </div>
               <div style={{ marginLeft:'auto', color:'var(--gray-300)', fontSize:18 }}>›</div>
@@ -1757,5 +1808,357 @@ export function BatchManagement() {
     </Page>
   );
 }
+
+// ===== PASSWORD RESET REQUESTS (BOARD ADMIN) =====
+export function PasswordResetRequests() {
+  const { api, showToast } = useApp();
+  const [requests, setRequests] = useState([]);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('Pending');
+  const [loading, setLoading] = useState(true);
+  const [selectedReq, setSelectedReq] = useState(null);
+  const [newPassword, setNewPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [confirmRejectId, setConfirmRejectId] = useState(null);
+
+  const loadRequests = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await api('/auth/password-reset-requests');
+      setRequests(data || []);
+    } catch (err) {
+      showToast(err.message || 'Failed to load password reset requests', 'error');
+    } finally {
+      setLoading(false);
+    }
+  }, [api, showToast]);
+
+  useEffect(() => {
+    loadRequests();
+  }, [loadRequests]);
+
+  const generateRandomPassword = () => {
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789!@#$%';
+    let pw = 'Pass@';
+    for (let i = 0; i < 4; i++) {
+      pw += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    setNewPassword(pw);
+  };
+
+  const handleOpenResetModal = (req) => {
+    setSelectedReq(req);
+    generateRandomPassword();
+    setShowPassword(true);
+  };
+
+  const handleResolvePassword = async () => {
+    if (!newPassword || newPassword.length < 6) {
+      showToast('Password must be at least 6 characters', 'error');
+      return;
+    }
+    setActionLoading(true);
+    try {
+      const res = await api(`/auth/password-reset-requests/${selectedReq.id}/resolve`, {
+        method: 'PATCH',
+        body: JSON.stringify({ newPassword })
+      });
+      showToast(res.message || 'Password reset successfully!', 'success');
+      setSelectedReq(null);
+      loadRequests();
+    } catch (err) {
+      showToast(err.message || 'Failed to reset password', 'error');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleReject = async (id) => {
+    try {
+      await api(`/auth/password-reset-requests/${id}/reject`, { method: 'PATCH' });
+      showToast('Request marked as rejected', 'info');
+      setConfirmRejectId(null);
+      loadRequests();
+    } catch (err) {
+      showToast(err.message || 'Failed to reject request', 'error');
+    }
+  };
+
+  const filtered = requests.filter(r => {
+    if (statusFilter !== 'All' && r.status !== statusFilter) return false;
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      (r.username && r.username.toLowerCase().includes(q)) ||
+      (r.name && r.name.toLowerCase().includes(q)) ||
+      (r.userUniqueId && r.userUniqueId.toLowerCase().includes(q)) ||
+      (r.schoolName && r.schoolName.toLowerCase().includes(q)) ||
+      (r.phone && r.phone.toLowerCase().includes(q))
+    );
+  });
+
+  const pendingCount = requests.filter(r => r.status === 'Pending').length;
+  const resolvedCount = requests.filter(r => r.status === 'Resolved').length;
+
+  return (
+    <Page>
+      <Toast />
+      <PageHeader title="Password Reset Requests" icon="🔐" backPath="/admin" />
+      <div className="page-content">
+        {/* Status summary banner */}
+        <div style={{ background: '#fff', borderRadius: 14, padding: '16px', border: '1px solid var(--gray-200)', marginBottom: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 44, height: 44, borderRadius: 12, background: '#f5f3ff', border: '1px solid #ddd6fe', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>
+              🔔
+            </div>
+            <div>
+              <div style={{ fontWeight: 800, fontSize: 14, color: '#0a1f6b' }}>
+                Reset Requests from Teachers & Schools
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 2 }}>
+                {pendingCount} pending request{pendingCount === 1 ? '' : 's'} requiring Board Admin action
+              </div>
+            </div>
+          </div>
+          <button className="btn btn-outline btn-sm" onClick={loadRequests} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            🔄 Refresh List
+          </button>
+        </div>
+
+        {/* Filter tabs */}
+        <div style={{ display: 'flex', gap: 8, marginBottom: 14, overflowX: 'auto', paddingBottom: 2 }}>
+          {[
+            { id: 'Pending', label: `Pending (${pendingCount})`, color: '#d97706', bg: '#fef3c7' },
+            { id: 'Resolved', label: `Resolved (${resolvedCount})`, color: '#16a34a', bg: '#dcfce7' },
+            { id: 'All', label: `All Requests (${requests.length})`, color: '#0a1f6b', bg: '#e0e8ff' },
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setStatusFilter(tab.id)}
+              style={{
+                padding: '8px 16px',
+                borderRadius: 10,
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: 'pointer',
+                border: statusFilter === tab.id ? `2px solid ${tab.color}` : '1px solid var(--gray-200)',
+                background: statusFilter === tab.id ? tab.bg : '#fff',
+                color: statusFilter === tab.id ? tab.color : 'var(--gray-700)',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.15s ease'
+              }}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+
+        {/* Search */}
+        <SearchBar value={search} onChange={setSearch} placeholder="Search by name, username, ID, school, or phone..." />
+
+        {/* Requests List */}
+        <div className="wide-grid" style={{ marginTop: 14, display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {loading ? (
+            <div style={{ textAlign: 'center', padding: 40, color: 'var(--gray-400)' }}>Loading requests...</div>
+          ) : filtered.length === 0 ? (
+            <div style={{ background: '#fff', borderRadius: 14, padding: 40, textAlign: 'center', border: '1px dashed var(--gray-300)' }}>
+              <div style={{ fontSize: 40, marginBottom: 8 }}>✨</div>
+              <div style={{ fontWeight: 700, fontSize: 14, color: 'var(--gray-700)' }}>
+                No {statusFilter !== 'All' ? statusFilter.toLowerCase() : ''} password reset requests found
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--gray-400)', marginTop: 4 }}>
+                When a teacher or school admin requests a password reset, it will appear here instantly.
+              </div>
+            </div>
+          ) : (
+            filtered.map(r => {
+              const isPending = r.status === 'Pending';
+              const isResolved = r.status === 'Resolved';
+
+              return (
+                <div
+                  key={r.id}
+                  style={{
+                    background: '#fff',
+                    borderRadius: 14,
+                    padding: 18,
+                    border: isPending ? '1.5px solid #fed7aa' : '1px solid var(--gray-200)',
+                    boxShadow: isPending ? '0 4px 16px rgba(217,119,6,0.08)' : '0 2px 8px rgba(0,0,0,0.03)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    gap: 12
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{
+                        width: 40, height: 40, borderRadius: 10,
+                        background: r.role === 'Teacher' ? '#ecfeff' : '#e0f2fe',
+                        border: `1px solid ${r.role === 'Teacher' ? '#a5f3fc' : '#bae6fd'}`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20
+                      }}>
+                        {r.role === 'Teacher' ? '👩‍🏫' : '🏫'}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 800, fontSize: 14, color: '#0a1f6b' }}>
+                          {r.name || r.username}
+                        </div>
+                        <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 2 }}>
+                          Username: <strong>{r.username}</strong> · ID: <strong>{r.userUniqueId || '—'}</strong>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      {roleBadge(r.role)}
+                      <span className={`badge ${isResolved ? 'badge-green' : isPending ? 'badge-orange' : 'badge-blue'}`}>
+                        {r.status}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Details grid */}
+                  <div style={{ background: '#f8fafc', borderRadius: 10, padding: '10px 14px', fontSize: 11, color: 'var(--gray-700)', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 8 }}>
+                    <div>🏫 <strong>School:</strong> {r.schoolName || '—'}</div>
+                    <div>📞 <strong>Phone:</strong> {r.phone || '—'}</div>
+                    <div>📅 <strong>Requested:</strong> {r.requestedAt ? new Date(r.requestedAt).toLocaleString() : '—'}</div>
+                    {r.email && r.email !== '—' && <div>✉️ <strong>Email:</strong> {r.email}</div>}
+                  </div>
+
+                  {r.note && (
+                    <div style={{ fontSize: 11, color: 'var(--gray-600)', fontStyle: 'italic', background: '#f0f4ff', padding: '6px 12px', borderRadius: 8 }}>
+                      💬 Note from user: "{r.note}"
+                    </div>
+                  )}
+
+                  {isResolved && (
+                    <div style={{ background: '#dcfce7', border: '1px solid #86efac', borderRadius: 10, padding: '10px 14px', fontSize: 12, color: '#14532d', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+                      <div>
+                        <span>✅ Reset by <strong>{r.resolvedByName || 'Board Admin'}</strong> on {new Date(r.resolvedAt).toLocaleString()}</span>
+                        {r.newPasswordPlain && (
+                          <div style={{ marginTop: 4, fontWeight: 700 }}>
+                            New Assigned Password: <code style={{ background: '#fff', padding: '2px 8px', borderRadius: 4, color: '#166534', border: '1px solid #bbf7d0', fontSize: 13 }}>{r.newPasswordPlain}</code>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Actions for Pending */}
+                  {isPending && (
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, paddingTop: 6, borderTop: '1px solid var(--gray-100)' }}>
+                      <button
+                        className="btn btn-outline btn-sm"
+                        style={{ color: '#dc2626', borderColor: '#fca5a5' }}
+                        onClick={() => setConfirmRejectId(r.id)}
+                      >
+                        ❌ Reject
+                      </button>
+                      <button
+                        className="btn btn-primary btn-sm"
+                        style={{ background: '#16a34a', borderColor: '#16a34a', fontWeight: 800 }}
+                        onClick={() => handleOpenResetModal(r)}
+                      >
+                        🔑 Reset & Update Password
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      {/* Password Reset Modal */}
+      {selectedReq && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: '#fff', borderRadius: 16, maxWidth: 440, width: '100%', padding: 24, boxShadow: '0 8px 32px rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
+              <div style={{ fontSize: 28 }}>🔑</div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#0a1f6b' }}>
+                  Reset User Password
+                </h3>
+                <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 2 }}>
+                  For {selectedReq.name || selectedReq.username} ({selectedReq.role})
+                </div>
+              </div>
+            </div>
+
+            <div style={{ background: '#f8fafc', border: '1px solid var(--gray-200)', borderRadius: 10, padding: 12, marginBottom: 14, fontSize: 11 }}>
+              <div>👤 <strong>Account Username:</strong> <span style={{ color: '#0a1f6b', fontWeight: 700 }}>{selectedReq.username}</span></div>
+              <div>🏫 <strong>School:</strong> {selectedReq.schoolName || '—'}</div>
+              <div>🆔 <strong>User ID:</strong> {selectedReq.userUniqueId || '—'}</div>
+            </div>
+
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray-700)' }}>
+                  New Password *
+                </label>
+                <button
+                  type="button"
+                  onClick={generateRandomPassword}
+                  style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: 11, fontWeight: 700, cursor: 'pointer', padding: 0 }}
+                >
+                  🎲 Auto-Generate
+                </button>
+              </div>
+
+              <div style={{ position: 'relative' }}>
+                <input
+                  className="input-bare"
+                  type={showPassword ? 'text' : 'password'}
+                  placeholder="Enter new password (min 6 characters)"
+                  value={newPassword}
+                  onChange={e => setNewPassword(e.target.value)}
+                  style={{ paddingRight: 40, fontFamily: 'monospace', fontWeight: 700, fontSize: 14 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 16 }}
+                >
+                  {showPassword ? '🙈' : '👁'}
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, marginTop: 18 }}>
+              <button
+                className="btn btn-ghost"
+                onClick={() => setSelectedReq(null)}
+                style={{ flex: 1 }}
+                disabled={actionLoading}
+              >
+                Cancel
+              </button>
+              <button
+                className="btn btn-primary"
+                onClick={handleResolvePassword}
+                style={{ flex: 2, background: '#16a34a', borderColor: '#16a34a', fontWeight: 800 }}
+                disabled={actionLoading || !newPassword || newPassword.length < 6}
+              >
+                {actionLoading ? 'Saving...' : '✅ Confirm & Set Password'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Reject confirmation modal */}
+      <ConfirmModal
+        open={!!confirmRejectId}
+        onClose={() => setConfirmRejectId(null)}
+        onConfirm={() => handleReject(confirmRejectId)}
+        title="Reject Password Request"
+        message="Are you sure you want to mark this password reset request as rejected?"
+      />
+    </Page>
+  );
+}
+
 
 

@@ -106,8 +106,8 @@ export function MarkAttendance() {
       setAssignedExams(duties);
       if (d.currentExam) {
         setActiveExam(d.currentExam);
-      } else if (duties.length > 0) {
-        setActiveExam(duties[0]);
+      } else {
+        setActiveExam(null);
       }
     }).catch(() => {});
   }, [api]);
@@ -284,20 +284,21 @@ export function MarkAttendance() {
       <PageHeader title="Mark Attendance" icon="📲" backPath="/teacher" />
       <div className="page-content" style={{ display:'flex', flexDirection:'column', gap:16 }}>
 
-        {/* Exam selector if multiple assigned exams */}
-        {assignedExams.length > 1 && (
+        {/* Exam selector if assigned exams exist */}
+        {assignedExams.length > 0 && (
           <div style={{ background: '#fff', borderRadius: 12, padding: '12px 14px', border: '1px solid var(--gray-200)' }}>
             <label style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray-600)', display: 'block', marginBottom: 4 }}>
-              📌 Select Assigned Exam:
+              📌 Assigned Exam Duties:
             </label>
             <select
               className="input-field"
               value={activeExam?.exam_id || ''}
               onChange={e => {
                 const found = assignedExams.find(ex => String(ex.exam_id) === e.target.value);
-                if (found) setActiveExam(found);
+                setActiveExam(found || null);
               }}
             >
+              <option value="">-- {activeExam ? 'Switch Exam' : 'Select an Assigned Exam'} --</option>
               {assignedExams.map(ex => (
                 <option key={ex.exam_id} value={ex.exam_id}>
                   {ex.subject} — {ex.class} ({ex.date} {ex.time || ''}) · Room {ex.classroom}
@@ -308,21 +309,85 @@ export function MarkAttendance() {
         )}
 
         {/* Active exam banner */}
-        {activeExam ? (
-          <div style={{ background:'#dcfce7', border:'2px solid #16a34a', borderRadius:12, padding:'14px 16px', textAlign:'center' }}>
-            <div style={{ fontSize:10, color:'#166534', fontWeight:700, textTransform:'uppercase', letterSpacing:.5 }}>Active Exam Duty</div>
-            <div style={{ fontSize:17, fontWeight:800, color:'#14532d', marginTop:2 }}>{activeExam.subject} — {activeExam.class}</div>
-            <div style={{ fontSize:12, color:'#166534', marginTop:4, fontWeight:600 }}>
-              📅 {activeExam.date} {activeExam.time ? `· ⏰ ${activeExam.time}` : ''} · 🏫 Room: {activeExam.classroom}
-            </div>
-            {activeExam.center_name && (
-              <div style={{ fontSize:11, color:'#15803d', marginTop:2 }}>📍 Center: {activeExam.center_name}</div>
-            )}
-          </div>
-        ) : (
+        {activeExam ? (() => {
+          const localDate = new Date().toLocaleDateString('en-CA');
+          const nowMins = new Date().getHours() * 60 + new Date().getMinutes();
+          let isOngoing = false;
+          let isPast = false;
+
+          if (activeExam.exam_status === 'Locked') {
+            return (
+              <div style={{ background:'#fef2f2', border:'2px solid #ef4444', borderRadius:12, padding:'14px 16px', textAlign:'center' }}>
+                <div style={{ fontSize:10, color:'#991b1b', fontWeight:700, textTransform:'uppercase', letterSpacing:.5 }}>🔒 Exam Locked</div>
+                <div style={{ fontSize:17, fontWeight:800, color:'#7f1d1d', marginTop:2 }}>{activeExam.subject} — {activeExam.class}</div>
+                <div style={{ fontSize:12, color:'#991b1b', marginTop:4, fontWeight:600 }}>
+                  📅 {activeExam.date} {activeExam.time ? `· ⏰ ${activeExam.time}` : ''} · 🏫 Room: {activeExam.classroom}
+                </div>
+                <div style={{ fontSize:11, color:'#b91c1c', marginTop:2 }}>Attendance marking is locked by the Board Admin.</div>
+              </div>
+            );
+          }
+
+          if (activeExam.date < localDate) {
+            isPast = true;
+          } else if (activeExam.date > localDate) {
+            isPast = false;
+          } else {
+            if (!activeExam.time) {
+              isOngoing = true;
+            } else {
+              const [h, m] = activeExam.time.split(':').map(Number);
+              const start = h * 60 + m;
+              const end = start + (Number(activeExam.duration) || 180);
+              if (nowMins > end + 30) isPast = true;
+              else if (nowMins >= start - 30) isOngoing = true;
+            }
+          }
+
+          if (isOngoing) {
+            return (
+              <div style={{ background:'#dcfce7', border:'2px solid #16a34a', borderRadius:12, padding:'14px 16px', textAlign:'center' }}>
+                <div style={{ fontSize:10, color:'#166534', fontWeight:700, textTransform:'uppercase', letterSpacing:.5 }}>Active Exam Duty Right Now</div>
+                <div style={{ fontSize:17, fontWeight:800, color:'#14532d', marginTop:2 }}>{activeExam.subject} — {activeExam.class}</div>
+                <div style={{ fontSize:12, color:'#166534', marginTop:4, fontWeight:600 }}>
+                  📅 {activeExam.date} {activeExam.time ? `· ⏰ ${activeExam.time}` : ''} · 🏫 Room: {activeExam.classroom}
+                </div>
+                {activeExam.center_name && (
+                  <div style={{ fontSize:11, color:'#15803d', marginTop:2 }}>📍 Center: {activeExam.center_name}</div>
+                )}
+              </div>
+            );
+          } else if (isPast) {
+            return (
+              <div style={{ background:'#fef2f2', border:'2px solid #ef4444', borderRadius:12, padding:'14px 16px', textAlign:'center' }}>
+                <div style={{ fontSize:10, color:'#991b1b', fontWeight:700, textTransform:'uppercase', letterSpacing:.5 }}>Exam Date/Time Ended</div>
+                <div style={{ fontSize:17, fontWeight:800, color:'#7f1d1d', marginTop:2 }}>{activeExam.subject} — {activeExam.class}</div>
+                <div style={{ fontSize:12, color:'#991b1b', marginTop:4, fontWeight:600 }}>
+                  📅 {activeExam.date} {activeExam.time ? `· ⏰ ${activeExam.time}` : ''} · 🏫 Room: {activeExam.classroom}
+                </div>
+                <div style={{ fontSize:11, color:'#b91c1c', marginTop:2 }}>⚠️ This exam's date/time has passed.</div>
+              </div>
+            );
+          } else {
+            return (
+              <div style={{ background:'#eff6ff', border:'2px solid #3b82f6', borderRadius:12, padding:'14px 16px', textAlign:'center' }}>
+                <div style={{ fontSize:10, color:'#1e40af', fontWeight:700, textTransform:'uppercase', letterSpacing:.5 }}>Upcoming Scheduled Exam</div>
+                <div style={{ fontSize:17, fontWeight:800, color:'#1e3a8a', marginTop:2 }}>{activeExam.subject} — {activeExam.class}</div>
+                <div style={{ fontSize:12, color:'#1e40af', marginTop:4, fontWeight:600 }}>
+                  📅 {activeExam.date} {activeExam.time ? `· ⏰ ${activeExam.time}` : ''} · 🏫 Room: {activeExam.classroom}
+                </div>
+                <div style={{ fontSize:11, color:'#2563eb', marginTop:2 }}>⏳ Exam is scheduled for a future time.</div>
+              </div>
+            );
+          }
+        })() : (
           <div style={{ background:'#fef3c7', border:'2px solid #d97706', borderRadius:12, padding:'14px 16px', textAlign:'center' }}>
-            <div style={{ fontSize:13, color:'#92400e', fontWeight:800 }}>⚠️ No Active Exam Assigned</div>
-            <div style={{ fontSize:11, color:'#92400e', marginTop:4 }}>Please ensure the school administrator has assigned you duty for an exam.</div>
+            <div style={{ fontSize:13, color:'#92400e', fontWeight:800 }}>⚠️ No Active Exam Right Now</div>
+            <div style={{ fontSize:11, color:'#92400e', marginTop:4 }}>
+              {assignedExams.length > 0
+                ? 'You have assigned exam duties, but none are active at this current date & time.'
+                : 'No exam duties have been assigned to your account.'}
+            </div>
           </div>
         )}
 
