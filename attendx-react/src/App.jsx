@@ -4,7 +4,7 @@ import { AppProvider, useApp } from './context/AppContext';
 
 import { Splash, Login, ForgotPassword } from './pages/AuthPages';
 import { AdminDashboard, SchoolManagement, AddSchool, UserManagement, AddUser, EditUser, ExamManagement, CreateExam, CenterManagement, AttendanceOverview, BatchManagement, PasswordResetRequests } from './pages/AdminPages';
-import { SchoolDashboard, SchoolStudents, SchoolTeachers, AddSchoolTeacher, SchoolAssignDuty, SchoolCenterDetails } from './pages/SchoolPages';
+import { SchoolDashboard, SchoolStudents, AddSchoolStudent, SchoolTeachers, AddSchoolTeacher, SchoolAssignDuty, SchoolCenterDetails } from './pages/SchoolPages';
 import { TeacherDashboard, MarkAttendance, AttendanceReport, AbsentReport, DutySlip } from './pages/TeacherPages';
 import { StudentDashboard } from './pages/StudentPages';
 import { AnalyticsDashboard } from './pages/AnalyticsPage';
@@ -268,6 +268,7 @@ function AppRoutes() {
         {/* School Admin */}
         <Route path="/school"                 element={<ProtectedRoute requiredRole="SchoolAdmin"><SchoolDashboard /></ProtectedRoute>} />
         <Route path="/school/students"        element={<ProtectedRoute requiredRole="SchoolAdmin"><SchoolStudents /></ProtectedRoute>} />
+        <Route path="/school/students/add"    element={<ProtectedRoute requiredRole="SchoolAdmin"><AddSchoolStudent /></ProtectedRoute>} />
         <Route path="/school/teachers"        element={<ProtectedRoute requiredRole="SchoolAdmin"><SchoolTeachers /></ProtectedRoute>} />
         <Route path="/school/teachers/add"    element={<ProtectedRoute requiredRole="SchoolAdmin"><AddSchoolTeacher /></ProtectedRoute>} />
         <Route path="/school/duties"          element={<ProtectedRoute requiredRole="SchoolAdmin"><SchoolAssignDuty /></ProtectedRoute>} />
