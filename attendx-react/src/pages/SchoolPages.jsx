@@ -171,42 +171,151 @@ export function SchoolStudents() {
           const workbook = XLSX.read(data, { type: 'array' });
           const sheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[sheetName];
-          const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+          const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
           
-          const updates = [];
+          if (!rows || rows.length === 0) {
+            showToast('The uploaded file appears to be empty.', 'error');
+            return;
+          }
+
           const cleanStr = (val) => (val === undefined || val === null) ? '' : String(val).trim().replace(/^["']|["']$/g, '').trim();
 
-          for (let r = 0; r < rows.length; r++) {
+          // Detect headers in the first row
+          const headerRow = (rows[0] || []).map(c => cleanStr(c).toLowerCase().replace(/[^a-z0-9]/g, ''));
+          
+          let rollNoIdx = -1;
+          let nameIdx = -1;
+          let yearIdx = -1;
+          let uidIdx = -1;
+          let srNoIdx = -1;
+
+          headerRow.forEach((col, idx) => {
+            if (['rollno', 'rollnumber', 'roll', 'seatno', 'seatnumber', 'rollnum'].includes(col)) rollNoIdx = idx;
+            else if (['name', 'studentname', 'fullname', 'student'].includes(col)) nameIdx = idx;
+            else if (['academicyear', 'year', 'batch', 'session'].includes(col)) yearIdx = idx;
+            else if (['uniqueid', 'uid', 'studentid', 'id'].includes(col)) uidIdx = idx;
+            else if (['srno', 'sr', 'sno', 'serial', 'serialno', 'no'].includes(col)) srNoIdx = idx;
+          });
+
+          const hasNamedHeaders = (rollNoIdx !== -1 || nameIdx !== -1 || uidIdx !== -1);
+          let startRow = hasNamedHeaders ? 1 : 0;
+
+          // If no recognized headers, check if row 0 contains common header keywords
+          if (!hasNamedHeaders && rows.length > 1) {
+            const firstRowStr = (rows[0] || []).map(c => cleanStr(c).toLowerCase()).join(' ');
+            if (firstRowStr.includes('roll') || firstRowStr.includes('name') || firstRowStr.includes('student') || firstRowStr.includes('sr')) {
+              startRow = 1;
+            }
+          }
+
+          const updates = [];
+
+          for (let r = startRow; r < rows.length; r++) {
             const row = rows[r];
-            if (row && row.length >= 2) {
-              const srNoStr = cleanStr(row[0]);
-              const rollNo = cleanStr(row[1]);
-              const academicYear = row[2] !== undefined ? cleanStr(row[2]) : '';
-              
-              const srNo = parseInt(srNoStr);
-              if (!isNaN(srNo) && srNo > 0 && rollNo) {
-                if (srNo <= students.length) {
-                  const student = students[srNo - 1]; // sorted list
-                  updates.push({
-                    uniqueId: student.uniqueId,
-                    rollNo,
-                    academicYear: academicYear || yearFilter || uploadBatch,
-                    createNew: false
-                  });
+            if (!row || row.length === 0) continue;
+
+            let rollNo = '';
+            let name = '';
+            let academicYear = '';
+            let uid = '';
+            let srNo = NaN;
+
+            if (hasNamedHeaders) {
+              if (rollNoIdx !== -1) rollNo = cleanStr(row[rollNoIdx]);
+              if (nameIdx !== -1) name = cleanStr(row[nameIdx]);
+              if (yearIdx !== -1) academicYear = cleanStr(row[yearIdx]);
+              if (uidIdx !== -1) uid = cleanStr(row[uidIdx]);
+              if (srNoIdx !== -1) srNo = parseInt(cleanStr(row[srNoIdx]));
+            } else {
+              // Positional fallback
+              const col0 = cleanStr(row[0]);
+              const col1 = row.length > 1 ? cleanStr(row[1]) : '';
+              const col2 = row.length > 2 ? cleanStr(row[2]) : '';
+              const col3 = row.length > 3 ? cleanStr(row[3]) : '';
+
+              if (row.length === 1) {
+                // Just roll number
+                rollNo = col0;
+              } else if (row.length === 2) {
+                const num0 = parseInt(col0);
+                if (!isNaN(num0) && num0 > 0 && num0 <= 500 && col1) {
+                  // sr_no, roll_no
+                  srNo = num0;
+                  rollNo = col1;
+                } else if (/^\d{4}-\d{4}$/.test(col1) || col1.toLowerCase().includes('202')) {
+                  // roll_no, academic_year
+                  rollNo = col0;
+                  academicYear = col1;
                 } else {
-                  updates.push({
-                    rollNo,
-                    academicYear: academicYear || yearFilter || uploadBatch,
-                    createNew: true
-                  });
+                  // roll_no, name or name, roll_no
+                  if (/^\d+$/.test(col0) || col0.toUpperCase().startsWith('ROLL') || col0.toUpperCase().startsWith('STU')) {
+                    rollNo = col0;
+                    name = col1;
+                  } else {
+                    name = col0;
+                    rollNo = col1;
+                  }
+                }
+              } else {
+                // 3 or more columns
+                const num0 = parseInt(col0);
+                if (!isNaN(num0) && num0 > 0 && num0 <= 500) {
+                  // sr_no, roll_no, academic_year / name
+                  srNo = num0;
+                  rollNo = col1;
+                  if (/^\d{4}-\d{4}$/.test(col2) || col2.toLowerCase().includes('202')) {
+                    academicYear = col2;
+                    name = col3;
+                  } else {
+                    name = col2;
+                    academicYear = col3;
+                  }
+                } else {
+                  // roll_no, name, academic_year
+                  rollNo = col0;
+                  name = col1;
+                  academicYear = col2;
                 }
               }
             }
+
+            if (!rollNo && !uid && isNaN(srNo)) continue;
+
+            // Match against existing students
+            let matched = null;
+            if (uid) {
+              matched = students.find(s => s.uniqueId && s.uniqueId.toLowerCase() === uid.toLowerCase());
+            }
+            if (!matched && rollNo) {
+              matched = students.find(s => s.rollNo && s.rollNo.trim().toLowerCase() === rollNo.toLowerCase());
+            }
+            if (!matched && !isNaN(srNo) && srNo > 0 && srNo <= students.length) {
+              matched = students[srNo - 1];
+            }
+
+            if (matched) {
+              updates.push({
+                uniqueId: matched.uniqueId,
+                rollNo: rollNo || matched.rollNo,
+                name: name || matched.name,
+                academicYear: academicYear || yearFilter || uploadBatch,
+                createNew: false
+              });
+            } else if (rollNo) {
+              updates.push({
+                rollNo,
+                name: name || '',
+                academicYear: academicYear || yearFilter || uploadBatch,
+                createNew: true
+              });
+            }
           }
+
           if (updates.length === 0) {
-            showToast('No valid student records found in sheet. Check serial numbers (e.g. 1, 2, 3) matching list below.', 'error');
+            showToast('No valid student / roll number records found in sheet. Please verify your file format.', 'error');
             return;
           }
+
           await api('/users/bulk-update-roll', {
             method: 'POST',
             body: JSON.stringify({
@@ -218,7 +327,7 @@ export function SchoolStudents() {
           showToast(`✅ Successfully imported ${updates.length} student records!`, 'success');
           load();
         } catch (err) {
-          showToast(err.message, 'error');
+          showToast(err.message || 'Error processing Excel file', 'error');
         }
       };
       reader.readAsArrayBuffer(file);
@@ -262,7 +371,7 @@ export function SchoolStudents() {
   };
 
   const downloadSampleCSV = () => {
-    const sampleContent = "sr_no,roll_no,academic_year\n1,1001,2025-2026\n2,1002,2025-2026\n3,1003,2025-2026\n4,1004,2025-2026\n5,1005,2025-2026\n";
+    const sampleContent = "sr_no,roll_no,name,academic_year\n1,1001,Ahmed Ali,2025-2026\n2,1002,Fatima Zahra,2025-2026\n3,1003,Usman Tariq,2025-2026\n4,1004,Ayesha Khan,2025-2026\n5,1005,Bilal Hassan,2025-2026\n";
     const blob = new Blob([sampleContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -289,12 +398,12 @@ export function SchoolStudents() {
             <div>
               <div style={{ fontWeight:700, fontSize:13, color:'#0a1f6b' }}>📥 Import Roll Numbers & Batches (Excel / CSV)</div>
               <div style={{ fontSize:11, color:'var(--gray-500)', marginTop:2 }}>
-                Upload an Excel (<code>.xlsx</code> / <code>.xls</code>) or CSV file with columns: <strong>sr_no, roll_no, academic_year</strong>.<br />
-                (If student list is empty or serial numbers are new, this will automatically register new students in your school).
+                Upload an Excel (<code>.xlsx</code> / <code>.xls</code>) or CSV file with columns: <strong>roll_no, name, academic_year</strong> (or <strong>sr_no, roll_no, academic_year</strong>).<br />
+                Automatically assigns roll numbers to existing students or registers new student accounts for your school.
               </div>
             </div>
             <button className="btn btn-ghost btn-sm" style={{ background:'#f0f4ff', color:'#0a1f6b', fontWeight:700, border:'1px solid #c7d2fe' }} onClick={downloadSampleCSV}>
-              📄 Sample CSV
+              📄 Sample Template
             </button>
           </div>
           
