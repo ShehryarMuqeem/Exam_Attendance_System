@@ -129,8 +129,13 @@ export function SchoolStudents() {
     if (yearFilter) url += `&academicYear=${encodeURIComponent(yearFilter)}`;
     api(url)
       .then(res => {
-        // Sort students alphabetically by name safely
-        const sorted = (res || []).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+        // Sort students numerically by rollNo, then uniqueId
+        const sorted = (res || []).sort((a, b) => {
+          const numA = parseInt(a.rollNo);
+          const numB = parseInt(b.rollNo);
+          if (!isNaN(numA) && !isNaN(numB)) return numA - numB;
+          return (a.rollNo || a.uniqueId || '').localeCompare(b.rollNo || b.uniqueId || '');
+        });
         setStudents(sorted);
       })
       .catch(e => showToast(e.message, 'error'));
@@ -185,40 +190,38 @@ export function SchoolStudents() {
           const headerRow = (rows[0] || []).map(c => cleanStr(c).toLowerCase().replace(/[^a-z0-9]/g, ''));
           
           let rollNoIdx = -1;
-          let nameIdx = -1;
-          let yearIdx = -1;
-          let classIdx = -1;
           let uidIdx = -1;
           let srNoIdx = -1;
+          let yearIdx = -1;
+          let classIdx = -1;
 
           headerRow.forEach((col, idx) => {
             if (['rollno', 'rollnumber', 'roll', 'seatno', 'seatnumber', 'rollnum', 'role', 'roleno', 'rolenumber', 'regno', 'reg', 'registrationno', 'grno', 'gr', 'admissionno', 'admno', 'enrollmentno', 'candidateno'].includes(col)) rollNoIdx = idx;
-            else if (['name', 'studentname', 'fullname', 'student', 'candidatename', 'nameofstudent', 'stuname'].includes(col)) nameIdx = idx;
-            else if (['academicyear', 'year', 'batch', 'session', 'academicsession', 'acadyear'].includes(col)) yearIdx = idx;
-            else if (['class', 'grade', 'standard', 'classname'].includes(col)) classIdx = idx;
             else if (['uniqueid', 'uid', 'studentid', 'id', 'systemid'].includes(col)) uidIdx = idx;
             else if (['srno', 'sr', 'sno', 'serial', 'serialno', 'no', 'num'].includes(col)) srNoIdx = idx;
+            else if (['academicyear', 'year', 'batch', 'session', 'academicsession', 'acadyear'].includes(col)) yearIdx = idx;
+            else if (['class', 'grade', 'standard', 'classname'].includes(col)) classIdx = idx;
           });
 
-          const hasNamedHeaders = (rollNoIdx !== -1 || nameIdx !== -1 || uidIdx !== -1);
+          const hasNamedHeaders = (rollNoIdx !== -1 || uidIdx !== -1 || srNoIdx !== -1);
           let startRow = hasNamedHeaders ? 1 : 0;
 
           // If no recognized headers, check if row 0 contains common header keywords
           if (!hasNamedHeaders && rows.length > 1) {
             const firstRowStr = (rows[0] || []).map(c => cleanStr(c).toLowerCase()).join(' ');
-            if (firstRowStr.includes('roll') || firstRowStr.includes('name') || firstRowStr.includes('student') || firstRowStr.includes('sr') || firstRowStr.includes('role')) {
+            if (firstRowStr.includes('roll') || firstRowStr.includes('id') || firstRowStr.includes('sr') || firstRowStr.includes('no')) {
               startRow = 1;
             }
           }
 
           const updates = [];
+          const seenInFile = new Set();
 
           for (let r = startRow; r < rows.length; r++) {
             const row = rows[r];
             if (!row || row.length === 0) continue;
 
             let rollNo = '';
-            let name = '';
             let academicYear = '';
             let studentClass = '';
             let uid = '';
@@ -226,59 +229,45 @@ export function SchoolStudents() {
 
             if (hasNamedHeaders) {
               if (rollNoIdx !== -1) rollNo = cleanStr(row[rollNoIdx]);
-              if (nameIdx !== -1) name = cleanStr(row[nameIdx]);
-              if (yearIdx !== -1) academicYear = cleanStr(row[yearIdx]);
-              if (classIdx !== -1) studentClass = cleanStr(row[classIdx]);
               if (uidIdx !== -1) uid = cleanStr(row[uidIdx]);
               if (srNoIdx !== -1) srNo = parseInt(cleanStr(row[srNoIdx]));
+              if (yearIdx !== -1) academicYear = cleanStr(row[yearIdx]);
+              if (classIdx !== -1) studentClass = cleanStr(row[classIdx]);
             } else {
               // Positional fallback
               const col0 = cleanStr(row[0]);
               const col1 = row.length > 1 ? cleanStr(row[1]) : '';
               const col2 = row.length > 2 ? cleanStr(row[2]) : '';
-              const col3 = row.length > 3 ? cleanStr(row[3]) : '';
 
               if (row.length === 1) {
                 // Just roll number
                 rollNo = col0;
               } else if (row.length === 2) {
-                const num0 = parseInt(col0);
-                if (!isNaN(num0) && num0 > 0 && num0 <= 500 && col1) {
-                  // sr_no, roll_no
-                  srNo = num0;
+                // id, roll_no or sr_no, roll_no
+                if (col0.toUpperCase().startsWith('STU') || col0.toUpperCase().startsWith('ID')) {
+                  uid = col0;
                   rollNo = col1;
-                } else if (/^\d{4}-\d{4}$/.test(col1) || col1.toLowerCase().includes('202')) {
-                  // roll_no, academic_year
-                  rollNo = col0;
-                  academicYear = col1;
                 } else {
-                  // roll_no, name or name, roll_no
-                  if (/^\d+$/.test(col0) || col0.toUpperCase().startsWith('ROLL') || col0.toUpperCase().startsWith('STU')) {
-                    rollNo = col0;
-                    name = col1;
-                  } else {
-                    name = col0;
+                  const num0 = parseInt(col0);
+                  if (!isNaN(num0) && num0 > 0 && num0 <= 500 && col1) {
+                    srNo = num0;
                     rollNo = col1;
+                  } else {
+                    rollNo = col0;
+                    if (/^\d{4}-\d{4}$/.test(col1) || col1.includes('202')) {
+                      academicYear = col1;
+                    }
                   }
                 }
               } else {
-                // 3 or more columns
-                const num0 = parseInt(col0);
-                if (!isNaN(num0) && num0 > 0 && num0 <= 500) {
-                  // sr_no, roll_no, academic_year / name
-                  srNo = num0;
+                // 3 columns: sr_no/id, roll_no, academic_year
+                if (col0.toUpperCase().startsWith('STU')) {
+                  uid = col0;
                   rollNo = col1;
-                  if (/^\d{4}-\d{4}$/.test(col2) || col2.toLowerCase().includes('202')) {
-                    academicYear = col2;
-                    name = col3;
-                  } else {
-                    name = col2;
-                    academicYear = col3;
-                  }
+                  academicYear = col2;
                 } else {
-                  // roll_no, name, academic_year
-                  rollNo = col0;
-                  name = col1;
+                  srNo = parseInt(col0);
+                  rollNo = col1;
                   academicYear = col2;
                 }
               }
@@ -286,40 +275,45 @@ export function SchoolStudents() {
 
             if (!rollNo && !uid && isNaN(srNo)) continue;
 
+            // Prevent duplicate roll numbers in the uploaded sheet for the same batch
+            const targetBatch = academicYear || yearFilter || uploadBatch;
+            const fileKey = `${cleanStr(rollNo).toLowerCase()}_${targetBatch}`;
+            if (rollNo && seenInFile.has(fileKey)) continue;
+            if (rollNo) seenInFile.add(fileKey);
+
             // Match against existing students
             let matched = null;
             if (uid) {
               matched = students.find(s => s.uniqueId && s.uniqueId.toLowerCase() === uid.toLowerCase());
             }
-            if (!matched && rollNo) {
-              matched = students.find(s => s.rollNo && s.rollNo.trim().toLowerCase() === rollNo.toLowerCase());
-            }
             if (!matched && !isNaN(srNo) && srNo > 0 && srNo <= students.length) {
               matched = students[srNo - 1];
+            }
+            if (!matched && rollNo) {
+              matched = students.find(s => s.rollNo && s.rollNo.trim().toLowerCase() === rollNo.toLowerCase() && (s.academicYear === targetBatch));
             }
 
             if (matched) {
               updates.push({
                 uniqueId: matched.uniqueId,
                 rollNo: rollNo || matched.rollNo,
-                name: name || matched.name,
                 class: studentClass || uploadClass,
-                academicYear: academicYear || yearFilter || uploadBatch,
+                academicYear: targetBatch,
                 createNew: false
               });
             } else if (rollNo) {
               updates.push({
+                uniqueId: uid || undefined,
                 rollNo,
-                name: name || '',
                 class: studentClass || uploadClass,
-                academicYear: academicYear || yearFilter || uploadBatch,
+                academicYear: targetBatch,
                 createNew: true
               });
             }
           }
 
           if (updates.length === 0) {
-            showToast('No valid student / roll number records found in sheet. Please verify your file format.', 'error');
+            showToast('No valid roll number records found in sheet.', 'error');
             return;
           }
 
@@ -331,7 +325,7 @@ export function SchoolStudents() {
               defaultYear: uploadBatch
             })
           });
-          showToast(`✅ Successfully imported ${updates.length} student records!`, 'success');
+          showToast(`✅ Successfully updated ${updates.length} student records!`, 'success');
           load();
         } catch (err) {
           showToast(err.message || 'Error processing Excel file', 'error');
@@ -378,12 +372,12 @@ export function SchoolStudents() {
   };
 
   const downloadSampleCSV = () => {
-    const sampleContent = "sr_no,roll_no,name,academic_year\n1,1001,Ahmed Ali,2025-2026\n2,1002,Fatima Zahra,2025-2026\n3,1003,Usman Tariq,2025-2026\n4,1004,Ayesha Khan,2025-2026\n5,1005,Bilal Hassan,2025-2026\n";
+    const sampleContent = "id,roll_no\nSTU-001,1001\nSTU-002,1002\nSTU-003,1003\nSTU-004,1004\nSTU-005,1005\n";
     const blob = new Blob([sampleContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", "sample_student_import_template.csv");
+    link.setAttribute("download", "sample_student_roll_template.csv");
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -397,7 +391,7 @@ export function SchoolStudents() {
       <div className="page-content">
         <div style={{ background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:10, padding:'10px 14px', marginBottom:14, fontSize:12, color:'#166534', fontWeight:600, display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:10 }}>
           <div>
-            🎓 Register students individually or import roll numbers and batches in bulk via Excel / CSV.
+            🎓 Manage student roll numbers and batches for examinations.
           </div>
           <button className="btn btn-primary btn-sm" style={{ padding:'7px 14px', fontSize:12 }} onClick={() => navigate('/school/students/add')}>
             + Add Student
@@ -408,10 +402,10 @@ export function SchoolStudents() {
         <div style={{ background:'#fff', borderRadius:14, padding:16, border:'1px solid var(--gray-100)', marginBottom:14 }}>
           <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:8, marginBottom:6 }}>
             <div>
-              <div style={{ fontWeight:700, fontSize:13, color:'#0a1f6b' }}>📥 Import Roll Numbers & Batches (Excel / CSV)</div>
+              <div style={{ fontWeight:700, fontSize:13, color:'#0a1f6b' }}>📥 Import Roll Numbers (Excel / CSV)</div>
               <div style={{ fontSize:11, color:'var(--gray-500)', marginTop:2 }}>
-                Upload an Excel (<code>.xlsx</code> / <code>.xls</code>) or CSV file with columns: <strong>roll_no, name, academic_year</strong> (or <strong>sr_no, roll_no, academic_year</strong>).<br />
-                Automatically assigns roll numbers to existing students or registers new student accounts for your school.
+                Upload an Excel (<code>.xlsx</code> / <code>.xls</code>) or CSV file with columns: <strong>id, roll_no</strong> (or <strong>sr_no, roll_no</strong> / just <strong>roll_no</strong>).<br />
+                Automatically assigns roll numbers with zero duplicates per batch.
               </div>
             </div>
             <button className="btn btn-ghost btn-sm" style={{ background:'#f0f4ff', color:'#0a1f6b', fontWeight:700, border:'1px solid #c7d2fe' }} onClick={downloadSampleCSV}>
@@ -463,7 +457,7 @@ export function SchoolStudents() {
                   <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
                     <div style={{ fontWeight:700, fontSize:13 }}>
                       <span style={{ background:'#e0e8ff', color:'#0a1f6b', padding:'2px 6px', borderRadius:4, marginRight:6, fontSize:11 }}>#{globalIndex}</span>
-                      {s.name} ({s.uniqueId})
+                      {s.uniqueId}
                     </div>
                     <div className="input-group" style={{ margin:0 }}>
                       <label style={{ fontSize:10 }}>Roll No</label>
@@ -486,10 +480,9 @@ export function SchoolStudents() {
                     <div>
                       <div style={{ fontWeight:700, fontSize:13 }}>
                         <span style={{ background:'#e0e8ff', color:'#0a1f6b', padding:'2px 6px', borderRadius:4, marginRight:6, fontSize:11 }}>#{globalIndex}</span>
-                        {s.name}
+                        {s.uniqueId} · Roll: <strong style={{ color:'#0a1f6b' }}>{s.rollNo||'—'}</strong>
                       </div>
-                      <div style={{ fontSize:10, color:'var(--gray-500)', marginTop:3 }}>ID: {s.uniqueId} · Roll: <strong style={{ color:'#0a1f6b' }}>{s.rollNo||'—'}</strong></div>
-                      <div style={{ fontSize:10, color:'var(--gray-500)' }}>Class: {s.class||'—'} · Batch: <strong>{s.academicYear||'—'}</strong></div>
+                      <div style={{ fontSize:10, color:'var(--gray-500)', marginTop:3 }}>Class: {s.class||'—'} · Batch: <strong>{s.academicYear||'—'}</strong></div>
                       <div style={{ marginTop:6 }}>{statusBadge(s.status)}</div>
                     </div>
                     <div style={{ display:'flex', gap:6 }}>
