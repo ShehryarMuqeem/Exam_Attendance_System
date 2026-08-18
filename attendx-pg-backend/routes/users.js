@@ -254,7 +254,7 @@ router.delete('/:id', protect, requireRole('BoardAdmin','SchoolAdmin'), async (r
 // POST bulk update roll numbers and optionally academic_year (supports auto-creating missing student records)
 router.post('/bulk-update-roll', protect, requireRole('SchoolAdmin'), async (req, res) => {
   try {
-    const { updates, defaultClass, defaultYear } = req.body; // array of { uniqueId, rollNo, academicYear, createNew }
+    const { updates, defaultClass, defaultYear } = req.body; // array of { uniqueId, rollNo, name, academicYear, createNew }
     if (!Array.isArray(updates)) {
       return res.status(400).json({ message: 'Updates must be an array' });
     }
@@ -262,8 +262,9 @@ router.post('/bulk-update-roll', protect, requireRole('SchoolAdmin'), async (req
     const processedRolls = new Set();
 
     for (const update of updates) {
-      const { uniqueId, rollNo, academicYear, createNew } = update;
+      const { uniqueId, rollNo, name, academicYear, createNew } = update;
       const cleanRoll = (rollNo || '').trim();
+      const cleanName = (name || '').trim();
       if (!cleanRoll) continue;
 
       // Skip duplicate roll numbers within the same bulk upload payload
@@ -274,48 +275,63 @@ router.post('/bulk-update-roll', protect, requireRole('SchoolAdmin'), async (req
       // Check if student with this roll number already exists in this school & class
       const targetClass = defaultClass || 'SSC-I';
       const { rows: existingStudent } = await pool.query(
-        `SELECT id, unique_id FROM users 
+        `SELECT id, unique_id, name FROM users 
          WHERE role = 'Student' AND school_id = $1 AND class = $2 AND UPPER(TRIM(roll_no)) = UPPER($3)`,
         [req.user.school_id, targetClass, cleanRoll]
       );
 
       if (existingStudent.length > 0) {
         // Update the existing student record instead of inserting a duplicate!
+        const updateFields = [];
+        const params = [];
         if (academicYear || defaultYear) {
+          params.push(academicYear || defaultYear);
+          updateFields.push(`academic_year = $${params.length}`);
+        }
+        if (cleanName && (!existingStudent[0].name || existingStudent[0].name.trim() === '')) {
+          params.push(cleanName);
+          updateFields.push(`name = $${params.length}`);
+        }
+        if (updateFields.length > 0) {
+          params.push(existingStudent[0].id);
           await pool.query(
-            `UPDATE users SET academic_year = $1 WHERE id = $2`,
-            [academicYear || defaultYear, existingStudent[0].id]
+            `UPDATE users SET ${updateFields.join(', ')} WHERE id = $${params.length}`,
+            params
           );
         }
       } else if (uniqueId) {
         // Update by uniqueId if roll number is not duplicate
+        const updateFields = [`roll_no = $1`];
+        const params = [cleanRoll];
         if (academicYear || defaultYear) {
-          await pool.query(
-            `UPDATE users 
-             SET roll_no = $1, academic_year = $4
-             WHERE unique_id = $2 AND school_id = $3 AND role = 'Student'`,
-            [cleanRoll, uniqueId, req.user.school_id, academicYear || defaultYear]
-          );
-        } else {
-          await pool.query(
-            `UPDATE users 
-             SET roll_no = $1
-             WHERE unique_id = $2 AND school_id = $3 AND role = 'Student'`,
-            [cleanRoll, uniqueId, req.user.school_id]
-          );
+          params.push(academicYear || defaultYear);
+          updateFields.push(`academic_year = $${params.length}`);
         }
+        if (cleanName) {
+          params.push(cleanName);
+          updateFields.push(`name = $${params.length}`);
+        }
+        params.push(uniqueId, req.user.school_id);
+        await pool.query(
+          `UPDATE users 
+           SET ${updateFields.join(', ')}
+           WHERE unique_id = $${params.length - 1} AND school_id = $${params.length} AND role = 'Student'`,
+          params
+        );
       } else if (createNew) {
         // Create new student with unique roll number
         const uniqueIdGen = await nextUniqueId('Student');
-        const slug = 'stu';
+        const slug = cleanName ? cleanName.toLowerCase().replace(/[^a-z]/g, '').slice(0, 8) : 'stu';
         const roll = cleanRoll.replace(/[^a-z0-9]/gi, '').slice(0, 4) || Math.floor(1000 + Math.random() * 9000);
-        const finalUsername = `${slug}${roll}${Math.floor(10 + Math.random() * 90)}`;
-        const hashed = await bcrypt.hash(`${slug}1234`, 10);
+        let finalUsername = `${slug || 'stu'}${roll}`;
+        const existingUname = await pool.query('SELECT id FROM users WHERE username=$1', [finalUsername]);
+        if (existingUname.rows[0]) finalUsername = `${finalUsername}${Math.floor(10 + Math.random() * 90)}`;
+        const hashed = await bcrypt.hash(`${slug || 'stu'}1234`, 10);
         
         await pool.query(
           `INSERT INTO users (unique_id, name, username, password, role, school_id, class, roll_no, academic_year)
            VALUES ($1, $2, $3, $4, 'Student', $5, $6, $7, $8)`,
-          [uniqueIdGen, '', finalUsername.toLowerCase(), hashed, req.user.school_id, targetClass, cleanRoll, academicYear || defaultYear]
+          [uniqueIdGen, cleanName, finalUsername.toLowerCase(), hashed, req.user.school_id, targetClass, cleanRoll, academicYear || defaultYear]
         );
       }
     }
