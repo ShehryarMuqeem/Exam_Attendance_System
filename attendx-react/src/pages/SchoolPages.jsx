@@ -123,13 +123,14 @@ export function SchoolStudents() {
       .catch(() => {});
   }, [api]);
 
+  const navigate = useNavigate();
   const load = useCallback(() => {
     let url = '/users?role=Student';
     if (yearFilter) url += `&academicYear=${encodeURIComponent(yearFilter)}`;
     api(url)
       .then(res => {
-        // Sort students alphabetically by name
-        const sorted = res.sort((a, b) => a.name.localeCompare(b.name));
+        // Sort students alphabetically by name safely
+        const sorted = (res || []).sort((a, b) => (a.name || '').localeCompare(b.name || ''));
         setStudents(sorted);
       })
       .catch(e => showToast(e.message, 'error'));
@@ -139,8 +140,8 @@ export function SchoolStudents() {
 
   const filtered = students.filter(s =>
     !search ||
-    s.name.toLowerCase().includes(search.toLowerCase()) ||
-    s.uniqueId.toLowerCase().includes(search.toLowerCase()) ||
+    (s.name && s.name.toLowerCase().includes(search.toLowerCase())) ||
+    (s.uniqueId && s.uniqueId.toLowerCase().includes(search.toLowerCase())) ||
     (s.rollNo && s.rollNo.toLowerCase().includes(search.toLowerCase()))
   );
 
@@ -186,15 +187,17 @@ export function SchoolStudents() {
           let rollNoIdx = -1;
           let nameIdx = -1;
           let yearIdx = -1;
+          let classIdx = -1;
           let uidIdx = -1;
           let srNoIdx = -1;
 
           headerRow.forEach((col, idx) => {
-            if (['rollno', 'rollnumber', 'roll', 'seatno', 'seatnumber', 'rollnum'].includes(col)) rollNoIdx = idx;
-            else if (['name', 'studentname', 'fullname', 'student'].includes(col)) nameIdx = idx;
-            else if (['academicyear', 'year', 'batch', 'session'].includes(col)) yearIdx = idx;
-            else if (['uniqueid', 'uid', 'studentid', 'id'].includes(col)) uidIdx = idx;
-            else if (['srno', 'sr', 'sno', 'serial', 'serialno', 'no'].includes(col)) srNoIdx = idx;
+            if (['rollno', 'rollnumber', 'roll', 'seatno', 'seatnumber', 'rollnum', 'role', 'roleno', 'rolenumber', 'regno', 'reg', 'registrationno', 'grno', 'gr', 'admissionno', 'admno', 'enrollmentno', 'candidateno'].includes(col)) rollNoIdx = idx;
+            else if (['name', 'studentname', 'fullname', 'student', 'candidatename', 'nameofstudent', 'stuname'].includes(col)) nameIdx = idx;
+            else if (['academicyear', 'year', 'batch', 'session', 'academicsession', 'acadyear'].includes(col)) yearIdx = idx;
+            else if (['class', 'grade', 'standard', 'classname'].includes(col)) classIdx = idx;
+            else if (['uniqueid', 'uid', 'studentid', 'id', 'systemid'].includes(col)) uidIdx = idx;
+            else if (['srno', 'sr', 'sno', 'serial', 'serialno', 'no', 'num'].includes(col)) srNoIdx = idx;
           });
 
           const hasNamedHeaders = (rollNoIdx !== -1 || nameIdx !== -1 || uidIdx !== -1);
@@ -203,7 +206,7 @@ export function SchoolStudents() {
           // If no recognized headers, check if row 0 contains common header keywords
           if (!hasNamedHeaders && rows.length > 1) {
             const firstRowStr = (rows[0] || []).map(c => cleanStr(c).toLowerCase()).join(' ');
-            if (firstRowStr.includes('roll') || firstRowStr.includes('name') || firstRowStr.includes('student') || firstRowStr.includes('sr')) {
+            if (firstRowStr.includes('roll') || firstRowStr.includes('name') || firstRowStr.includes('student') || firstRowStr.includes('sr') || firstRowStr.includes('role')) {
               startRow = 1;
             }
           }
@@ -217,6 +220,7 @@ export function SchoolStudents() {
             let rollNo = '';
             let name = '';
             let academicYear = '';
+            let studentClass = '';
             let uid = '';
             let srNo = NaN;
 
@@ -224,6 +228,7 @@ export function SchoolStudents() {
               if (rollNoIdx !== -1) rollNo = cleanStr(row[rollNoIdx]);
               if (nameIdx !== -1) name = cleanStr(row[nameIdx]);
               if (yearIdx !== -1) academicYear = cleanStr(row[yearIdx]);
+              if (classIdx !== -1) studentClass = cleanStr(row[classIdx]);
               if (uidIdx !== -1) uid = cleanStr(row[uidIdx]);
               if (srNoIdx !== -1) srNo = parseInt(cleanStr(row[srNoIdx]));
             } else {
@@ -298,6 +303,7 @@ export function SchoolStudents() {
                 uniqueId: matched.uniqueId,
                 rollNo: rollNo || matched.rollNo,
                 name: name || matched.name,
+                class: studentClass || uploadClass,
                 academicYear: academicYear || yearFilter || uploadBatch,
                 createNew: false
               });
@@ -305,6 +311,7 @@ export function SchoolStudents() {
               updates.push({
                 rollNo,
                 name: name || '',
+                class: studentClass || uploadClass,
                 academicYear: academicYear || yearFilter || uploadBatch,
                 createNew: true
               });
@@ -388,8 +395,13 @@ export function SchoolStudents() {
       <Toast />
       <PageHeader title="Students" icon="🎓" backPath="/school" />
       <div className="page-content">
-        <div style={{ background:'#fef9e7', border:'1px solid #fde68a', borderRadius:10, padding:'9px 14px', marginBottom:14, fontSize:12, color:'#92400e', fontWeight:600 }}>
-          ℹ Students are registered by the Board Admin. Set or import roll numbers and academic years below.
+        <div style={{ background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:10, padding:'10px 14px', marginBottom:14, fontSize:12, color:'#166534', fontWeight:600, display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:10 }}>
+          <div>
+            🎓 Register students individually or import roll numbers and batches in bulk via Excel / CSV.
+          </div>
+          <button className="btn btn-primary btn-sm" style={{ padding:'7px 14px', fontSize:12 }} onClick={() => navigate('/school/students/add')}>
+            + Add Student
+          </button>
         </div>
 
         {/* Excel / CSV Import */}
@@ -925,3 +937,137 @@ export function SchoolCenterDetails() {
   );
 }
 
+export function AddSchoolStudent() {
+  const navigate = useNavigate();
+  const { api, showToast } = useApp();
+  const [form, setForm] = useState({ name: '', class: 'SSC-I', academicYear: '', rollNo: '', section: '', phone: '', email: '' });
+  const [batchOptions, setBatchOptions] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [generated, setGenerated] = useState(null);
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  useEffect(() => {
+    api('/academic/years')
+      .then(res => {
+        if (Array.isArray(res) && res.length > 0) {
+          setBatchOptions(res);
+          setForm(f => ({ ...f, academicYear: f.academicYear || res[0] }));
+        }
+      })
+      .catch(() => {});
+  }, [api]);
+
+  const save = async () => {
+    if (!form.name.trim() || !form.class) {
+      showToast('Student Name and Class are required', 'error');
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await api('/users', {
+        method: 'POST',
+        body: JSON.stringify({ ...form, role: 'Student' })
+      });
+      if (res.generatedUsername) {
+        setGenerated({
+          name: form.name,
+          uniqueId: res.uniqueId,
+          username: res.generatedUsername,
+          password: res.generatedPassword,
+        });
+        showToast('Student registered successfully! ✓', 'success');
+      } else {
+        showToast('Student registered! ✓', 'success');
+        setTimeout(() => navigate('/school/students'), 800);
+      }
+    } catch (e) {
+      showToast(e.message, 'error');
+    }
+    setLoading(false);
+  };
+
+  return (
+    <Page>
+      <Toast />
+      <PageHeader title="Add Student" icon="🎓" backPath="/school/students" />
+      <div className="page-content">
+        {generated ? (
+          <div style={{ background:'#fff', borderRadius:16, border:'2px solid #16a34a', padding:24, boxShadow:'0 4px 20px rgba(0,0,0,0.06)' }}>
+            <div style={{ fontSize:40, textAlign:'center', marginBottom:8 }}>🎉</div>
+            <h2 style={{ fontSize:18, fontWeight:800, color:'#14532d', textAlign:'center', margin:0 }}>Student Registered Successfully!</h2>
+            <p style={{ fontSize:12, color:'var(--gray-500)', textAlign:'center', marginTop:4, marginBottom:20 }}>
+              Auto-generated credentials for <strong>{generated.name}</strong>
+            </p>
+            <div style={{ background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:12, padding:16, marginBottom:20, display:'flex', flexDirection:'column', gap:10 }}>
+              <div style={{ display:'flex', justifyContent:'space-between', fontSize:13 }}>
+                <span style={{ color:'var(--gray-500)' }}>Unique ID:</span>
+                <strong style={{ color:'#0a1f6b', fontFamily:'monospace', fontSize:14 }}>{generated.uniqueId}</strong>
+              </div>
+              <div style={{ display:'flex', justifyContent:'space-between', fontSize:13 }}>
+                <span style={{ color:'var(--gray-500)' }}>Username:</span>
+                <strong style={{ color:'#16a34a', fontFamily:'monospace', fontSize:14 }}>{generated.username}</strong>
+              </div>
+              <div style={{ display:'flex', justifyContent:'space-between', fontSize:13 }}>
+                <span style={{ color:'var(--gray-500)' }}>Default Password:</span>
+                <strong style={{ color:'#16a34a', fontFamily:'monospace', fontSize:14 }}>{generated.password}</strong>
+              </div>
+            </div>
+            <div style={{ display:'flex', gap:10 }}>
+              <button className="btn btn-outline" style={{ flex:1 }} onClick={() => {
+                setGenerated(null);
+                setForm({ name: '', class: form.class, academicYear: form.academicYear, rollNo: '', section: '', phone: '', email: '' });
+              }}>+ Add Another Student</button>
+              <button className="btn btn-primary" style={{ flex:1 }} onClick={() => navigate('/school/students')}>Done</button>
+            </div>
+          </div>
+        ) : (
+          <div style={{ background:'#fff', borderRadius:14, padding:16, border:'1px solid var(--gray-100)' }}>
+            <div className="input-group">
+              <label>Student Full Name *</label>
+              <input className="input-field" placeholder="e.g. Muhammad Ali" value={form.name} onChange={e => set('name', e.target.value)} />
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+              <div className="input-group">
+                <label>Class *</label>
+                <select className="input-field" value={form.class} onChange={e => set('class', e.target.value)}>
+                  {['SSC-I','SSC-II','HSC-I','HSC-II','SSC-I Supplementary','SSC-II Supplementary','HSC-I Supplementary','HSC-II Supplementary'].map(c => (
+                    <option key={c} value={c}>{c}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="input-group">
+                <label>Academic Year / Batch</label>
+                <select className="input-field" value={form.academicYear} onChange={e => set('academicYear', e.target.value)}>
+                  {(batchOptions.length > 0 ? batchOptions : ['2025-2026', '2026-2027', '2027-2028']).map(y => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+              <div className="input-group">
+                <label>Roll Number</label>
+                <input className="input-field" placeholder="e.g. 1001" value={form.rollNo} onChange={e => set('rollNo', e.target.value)} />
+              </div>
+              <div className="input-group">
+                <label>Section (Optional)</label>
+                <input className="input-field" placeholder="e.g. A" value={form.section} onChange={e => set('section', e.target.value)} />
+              </div>
+            </div>
+            <div className="input-group">
+              <label>Phone (Optional)</label>
+              <input className="input-field" placeholder="e.g. +92 300 1234567" value={form.phone} onChange={e => set('phone', e.target.value)} />
+            </div>
+            <div className="input-group">
+              <label>Email (Optional)</label>
+              <input className="input-field" type="email" placeholder="e.g. student@school.edu" value={form.email} onChange={e => set('email', e.target.value)} />
+            </div>
+            <button className="btn btn-primary" style={{ marginTop:16, width:'100%' }} onClick={save} disabled={loading}>
+              {loading ? 'Registering Student…' : 'Register Student'}
+            </button>
+          </div>
+        )}
+      </div>
+    </Page>
+  );
+}

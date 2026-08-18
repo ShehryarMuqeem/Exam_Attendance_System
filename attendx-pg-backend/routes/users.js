@@ -252,11 +252,17 @@ router.delete('/:id', protect, requireRole('BoardAdmin','SchoolAdmin'), async (r
 });
 
 // POST bulk update roll numbers and optionally academic_year (supports auto-creating missing student records)
+// Strictly for SchoolAdmin — BoardAdmin manages examinations & centers only
 router.post('/bulk-update-roll', protect, requireRole('SchoolAdmin'), async (req, res) => {
   try {
     const { updates, defaultClass, defaultYear } = req.body; // array of { uniqueId, rollNo, name, academicYear, createNew }
     if (!Array.isArray(updates)) {
       return res.status(400).json({ message: 'Updates must be an array' });
+    }
+
+    const targetSchoolId = req.user.school_id;
+    if (!targetSchoolId) {
+      return res.status(400).json({ message: 'No school associated with this School Administrator account.' });
     }
 
     const processedRolls = new Set();
@@ -273,11 +279,11 @@ router.post('/bulk-update-roll', protect, requireRole('SchoolAdmin'), async (req
       processedRolls.add(rollKey);
 
       // Check if student with this roll number already exists in this school & class
-      const targetClass = defaultClass || 'SSC-I';
+      const targetClass = update.class || defaultClass || 'SSC-I';
       const { rows: existingStudent } = await pool.query(
         `SELECT id, unique_id, name FROM users 
          WHERE role = 'Student' AND school_id = $1 AND class = $2 AND UPPER(TRIM(roll_no)) = UPPER($3)`,
-        [req.user.school_id, targetClass, cleanRoll]
+        [targetSchoolId, targetClass, cleanRoll]
       );
 
       if (existingStudent.length > 0) {
@@ -311,7 +317,7 @@ router.post('/bulk-update-roll', protect, requireRole('SchoolAdmin'), async (req
           params.push(cleanName);
           updateFields.push(`name = $${params.length}`);
         }
-        params.push(uniqueId, req.user.school_id);
+        params.push(uniqueId, targetSchoolId);
         await pool.query(
           `UPDATE users 
            SET ${updateFields.join(', ')}
@@ -331,7 +337,7 @@ router.post('/bulk-update-roll', protect, requireRole('SchoolAdmin'), async (req
         await pool.query(
           `INSERT INTO users (unique_id, name, username, password, role, school_id, class, roll_no, academic_year)
            VALUES ($1, $2, $3, $4, 'Student', $5, $6, $7, $8)`,
-          [uniqueIdGen, cleanName, finalUsername.toLowerCase(), hashed, req.user.school_id, targetClass, cleanRoll, academicYear || defaultYear]
+          [uniqueIdGen, cleanName, finalUsername.toLowerCase(), hashed, targetSchoolId, targetClass, cleanRoll, academicYear || defaultYear]
         );
       }
     }
