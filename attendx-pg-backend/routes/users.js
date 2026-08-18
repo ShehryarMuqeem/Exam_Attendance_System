@@ -15,26 +15,26 @@ async function nextUniqueId(role) {
 router.get('/', protect, requireRole('BoardAdmin','SchoolAdmin'), async (req, res) => {
   try {
     let query, params;
-    const yearFilter = req.query.academicYear ? `AND u.academic_year = $${req.user.role === 'SchoolAdmin' ? 3 : 1}` : '';
+    const role = req.query.role;
+    const academicYear = req.query.academicYear;
+
     if (req.user.role === 'SchoolAdmin') {
-      const role = req.query.role;
       if (role === 'Teacher' || role === 'Student') {
-        const yearParam = req.query.academicYear ? [req.query.academicYear] : [];
+        const yearParam = academicYear ? [academicYear] : [];
         query = `SELECT u.*, s.name as school_name, s.school_id as school_code
                  FROM users u LEFT JOIN schools s ON u.school_id=s.id
-                 WHERE u.school_id=$1 AND u.role=$2 ${req.query.academicYear ? 'AND u.academic_year=$3' : ''}
+                 WHERE u.school_id=$1 AND u.role=$2 ${academicYear ? 'AND u.academic_year=$3' : ''}
                  ORDER BY u.created_at DESC`;
         params = [req.user.school_id, role, ...yearParam];
       } else {
-        const yearParam = req.query.academicYear ? [req.query.academicYear] : [];
+        const yearParam = academicYear ? [academicYear] : [];
         query = `SELECT u.*, s.name as school_name, s.school_id as school_code
                  FROM users u LEFT JOIN schools s ON u.school_id=s.id
-                 WHERE u.school_id=$1 AND u.role IN ('Teacher','Student') ${req.query.academicYear ? 'AND u.academic_year=$2' : ''}
+                 WHERE u.school_id=$1 AND u.role IN ('Teacher','Student') ${academicYear ? 'AND u.academic_year=$2' : ''}
                  ORDER BY u.created_at DESC`;
         params = [req.user.school_id, ...yearParam];
       }
     } else {
-      const role = req.query.role;
       const schoolId = req.query.schoolId ? parseInt(req.query.schoolId) : null;
       let conditions = [];
       let paramsArr = [];
@@ -44,9 +44,9 @@ router.get('/', protect, requireRole('BoardAdmin','SchoolAdmin'), async (req, re
         paramsArr.push(schoolId);
       }
       
-      if (req.query.academicYear) {
+      if (academicYear) {
         conditions.push(`u.academic_year=$${paramsArr.length + 1}`);
-        paramsArr.push(req.query.academicYear);
+        paramsArr.push(academicYear);
       }
 
       const condStr = conditions.length > 0 ? 'AND ' + conditions.join(' AND ') : '';
