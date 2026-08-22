@@ -133,12 +133,91 @@ router.delete('/:id', protect, requireRole('BoardAdmin'), async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
-// POST assign duty — School Admin assigns from their OWN center's teachers only
+// GET available blocks for the School Admin's center
+router.get('/blocks', protect, requireRole('SchoolAdmin', 'BoardAdmin'), async (req, res) => {
+  try {
+    const schoolId = req.user.school_id;
+    let savedBlocks = [];
+    if (schoolId) {
+      const { rows } = await pool.query(
+        'SELECT block_name FROM school_blocks WHERE school_id = $1 ORDER BY block_name',
+        [schoolId]
+      );
+      savedBlocks = rows.map(r => r.block_name);
+    }
+
+    // Default standard blocks
+    const defaultBlocks = ['Block 1', 'Block 2', 'Block 3', 'Block 4', 'Block 5', 'Block A', 'Block B', 'Block C'];
+    const allBlocks = Array.from(new Set([...defaultBlocks, ...savedBlocks]));
+    res.json(allBlocks);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// POST add a new block for school center
+router.post('/blocks', protect, requireRole('SchoolAdmin'), async (req, res) => {
+  try {
+    const { blockName } = req.body;
+    if (!blockName || !blockName.trim()) {
+      return res.status(400).json({ message: 'Block name is required' });
+    }
+    const cleanBlock = blockName.trim();
+    await pool.query(
+      'INSERT INTO school_blocks (school_id, block_name) VALUES ($1, $2) ON CONFLICT (school_id, block_name) DO NOTHING',
+      [req.user.school_id, cleanBlock]
+    );
+    res.json({ success: true, blockName: cleanBlock });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// GET exam-specific block summary (assigned teachers and student counts per block)
+router.get('/:id/blocks', protect, requireRole('SchoolAdmin', 'BoardAdmin'), async (req, res) => {
+  try {
+    const examId = req.params.id;
+    const { rows: dutyRows } = await pool.query(
+      `SELECT da.classroom as block_name, da.teacher_id, u.name as teacher_name, u.unique_id as teacher_unique_id
+       FROM duty_assignments da JOIN users u ON da.teacher_id = u.id
+       WHERE da.exam_id = $1`,
+      [examId]
+    );
+
+    const { rows: studentCounts } = await pool.query(
+      `SELECT classroom as block_name, COUNT(*) as student_count
+       FROM attendance
+       WHERE exam_id = $1 AND classroom != 'Unallocated'
+       GROUP BY classroom`,
+      [examId]
+    );
+
+    const countMap = {};
+    studentCounts.forEach(c => {
+      countMap[c.block_name] = parseInt(c.student_count) || 0;
+    });
+
+    const blocks = dutyRows.map(d => ({
+      blockName: d.block_name,
+      teacherId: d.teacher_id,
+      teacherName: d.teacher_name,
+      teacherUniqueId: d.teacher_unique_id,
+      studentCount: countMap[d.block_name] || 0,
+    }));
+
+    res.json(blocks);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// POST assign duty to teacher for a block
 router.post('/:id/assign-duty', protect, requireRole('SchoolAdmin'), async (req, res) => {
   try {
-    const { teacherId, classroom } = req.body;
-    if (!teacherId || !classroom) {
-      return res.status(400).json({ message: 'Teacher and classroom are required.' });
+    const { teacherId, classroom, block } = req.body;
+    const targetBlock = (block || classroom || '').trim();
+    if (!teacherId || !targetBlock) {
+      return res.status(400).json({ message: 'Teacher and Block are required.' });
     }
 
     // Verify this exam's center IS this admin's school
@@ -157,14 +236,20 @@ router.post('/:id/assign-duty', protect, requireRole('SchoolAdmin'), async (req,
       return res.status(403).json({ message: 'You can only assign duty to teachers from your own school/center staff.' });
     }
 
+    // Save block into school_blocks for future quick access
+    await pool.query(
+      'INSERT INTO school_blocks (school_id, block_name) VALUES ($1, $2) ON CONFLICT (school_id, block_name) DO NOTHING',
+      [req.user.school_id, targetBlock]
+    );
+
     const { rows } = await pool.query(
       `INSERT INTO duty_assignments (teacher_id,exam_id,classroom,assigned_by)
        VALUES ($1,$2,$3,$4)
        ON CONFLICT (teacher_id,exam_id) DO UPDATE SET classroom=$3
-       RETURNING *`,
-      [teacherId, req.params.id, classroom, req.user.id]
+       RETURNING *, classroom as block`,
+      [teacherId, req.params.id, targetBlock, req.user.id]
     );
-    await pool.query('UPDATE users SET assigned_classroom=$1 WHERE id=$2', [classroom, teacherId]);
+    await pool.query('UPDATE users SET assigned_classroom=$1 WHERE id=$2', [targetBlock, teacherId]);
     res.json(rows[0]);
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
@@ -194,20 +279,21 @@ router.get('/:id/duties', protect, requireRole('SchoolAdmin','BoardAdmin'), asyn
       [req.params.id]
     );
     const mapped = rows.map(d => ({
-      _id: d.id, classroom: d.classroom,
+      _id: d.id, classroom: d.classroom, block: d.classroom,
       teacherId: { _id: d.teacher_id, name: d.teacher_name, uniqueId: d.teacher_unique_id }
     }));
     res.json(mapped);
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
-// POST assign students to a classroom (SchoolAdmin/BoardAdmin)
+// POST assign students to a block (SchoolAdmin/BoardAdmin)
 router.post('/:id/assign-students-room', protect, requireRole('SchoolAdmin'), async (req, res) => {
   try {
     const examId = req.params.id;
-    const { classroom, studentIds } = req.body;
-    if (!classroom || !Array.isArray(studentIds)) {
-      return res.status(400).json({ message: 'Classroom and studentIds array are required.' });
+    const { classroom, block, studentIds } = req.body;
+    const targetBlock = (block || classroom || '').trim();
+    if (!targetBlock || !Array.isArray(studentIds) || studentIds.length === 0) {
+      return res.status(400).json({ message: 'Block and studentIds are required.' });
     }
 
     // Verify this exam's center is this admin's school
@@ -217,18 +303,24 @@ router.post('/:id/assign-students-room', protect, requireRole('SchoolAdmin'), as
       return res.status(403).json({ message: 'This exam is not held at your center.' });
     }
 
-    // Assign each student to the classroom. Set status to 'Absent' by default.
+    // Auto-save block to school_blocks
+    await pool.query(
+      'INSERT INTO school_blocks (school_id, block_name) VALUES ($1, $2) ON CONFLICT (school_id, block_name) DO NOTHING',
+      [req.user.school_id, targetBlock]
+    );
+
+    // Assign each student to the block. Set status to 'Absent' by default.
     for (const studentId of studentIds) {
       await pool.query(
         `INSERT INTO attendance (student_id, exam_id, teacher_id, classroom, status)
          VALUES ($1, $2, $3, $4, 'Absent')
          ON CONFLICT (student_id, exam_id) DO UPDATE 
            SET classroom = $4`,
-        [studentId, examId, req.user.id, classroom]
+        [studentId, examId, req.user.id, targetBlock]
       );
     }
 
-    res.json({ success: true, message: `✅ Successfully assigned ${studentIds.length} students to ${classroom}!` });
+    res.json({ success: true, message: `✅ Successfully allocated ${studentIds.length} student(s) to ${targetBlock}!` });
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
@@ -273,17 +365,12 @@ router.get('/:id/roster', protect, requireRole('SchoolAdmin','BoardAdmin'), asyn
       attendanceMap[a.student_id] = { classroom: a.classroom, status: a.status };
     });
 
-    // Deduplicate students list so no roll number appears more than once
-    const seenRolls = new Set();
+    // Deduplicate students list by unique id
     const seenUids = new Set();
     const uniqueStudents = [];
     for (const s of students) {
-      const rollKey = (s.roll_no || '').trim().toLowerCase();
-      const uidKey = (s.unique_id || '').trim().toLowerCase();
-      if (rollKey && seenRolls.has(rollKey)) continue;
-      if (uidKey && seenUids.has(uidKey)) continue;
-      if (rollKey) seenRolls.add(rollKey);
-      if (uidKey) seenUids.add(uidKey);
+      if (s.id && seenUids.has(s.id)) continue;
+      if (s.id) seenUids.add(s.id);
       uniqueStudents.push(s);
     }
 

@@ -23,15 +23,112 @@ router.post('/assign', protect, requireRole('BoardAdmin'), async (req, res) => {
     if (homeSchoolId === centerSchoolId)
       return res.status(400).json({ message: 'A school is already its own center by default — no assignment needed.' });
 
+    // Clean up any old center assignment for this home school
+    await pool.query('DELETE FROM center_assignments WHERE home_school_id=$1', [homeSchoolId]);
+
     const { rows } = await pool.query(
       `INSERT INTO center_assignments (home_school_id, center_school_id, assigned_by)
        VALUES ($1,$2,$3)
-       ON CONFLICT (home_school_id, center_school_id) DO NOTHING
        RETURNING *`,
       [homeSchoolId, centerSchoolId, req.user.id]
     );
-    res.status(201).json(rows[0] || { message: 'Assignment already exists' });
+    res.status(201).json(rows[0] || { message: 'Assignment created successfully' });
   } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+// POST bulk assign centers from CSV / Excel file data (Board only)
+router.post('/bulk-assign', protect, requireRole('BoardAdmin'), async (req, res) => {
+  try {
+    const { assignments } = req.body;
+    if (!Array.isArray(assignments) || assignments.length === 0) {
+      return res.status(400).json({ message: 'No center assignment records provided' });
+    }
+
+    // Load all schools for lookup by code, name, or id
+    const { rows: allSchools } = await pool.query('SELECT id, name, school_id FROM schools');
+    const schoolById = new Map();
+    const schoolByCode = new Map();
+    const schoolByName = new Map();
+
+    allSchools.forEach(s => {
+      schoolById.set(String(s.id), s);
+      if (s.school_id) schoolByCode.set(String(s.school_id).trim().toLowerCase(), s);
+      if (s.name) schoolByName.set(String(s.name).trim().toLowerCase(), s);
+    });
+
+    const findSchool = (id, code, name) => {
+      if (id && schoolById.has(String(id))) return schoolById.get(String(id));
+      if (code && schoolByCode.has(String(code).trim().toLowerCase())) return schoolByCode.get(String(code).trim().toLowerCase());
+      if (name && schoolByName.has(String(name).trim().toLowerCase())) return schoolByName.get(String(name).trim().toLowerCase());
+      return null;
+    };
+
+    let assignedCount = 0;
+    let skippedCount = 0;
+    const results = [];
+
+    for (const item of assignments) {
+      const homeSchool = findSchool(item.homeSchoolId, item.homeSchoolCode, item.homeSchoolName);
+      const centerSchool = findSchool(item.centerSchoolId, item.centerSchoolCode, item.centerSchoolName);
+
+      if (!homeSchool) {
+        results.push({
+          row: item,
+          success: false,
+          error: `Home school "${item.homeSchoolCode || item.homeSchoolName || item.homeSchoolId}" not found in database.`
+        });
+        skippedCount++;
+        continue;
+      }
+
+      if (!centerSchool) {
+        results.push({
+          row: item,
+          success: false,
+          error: `Center school "${item.centerSchoolCode || item.centerSchoolName || item.centerSchoolId}" not found in database.`
+        });
+        skippedCount++;
+        continue;
+      }
+
+      if (homeSchool.id === centerSchool.id) {
+        results.push({
+          row: item,
+          success: false,
+          error: `School "${homeSchool.name}" (${homeSchool.school_id}) cannot be assigned to itself.`
+        });
+        skippedCount++;
+        continue;
+      }
+
+      // Remove existing assignment for home school and insert new
+      await pool.query('DELETE FROM center_assignments WHERE home_school_id=$1', [homeSchool.id]);
+      const { rows: inserted } = await pool.query(
+        `INSERT INTO center_assignments (home_school_id, center_school_id, assigned_by)
+         VALUES ($1, $2, $3)
+         RETURNING *`,
+        [homeSchool.id, centerSchool.id, req.user.id]
+      );
+
+      results.push({
+        row: item,
+        success: true,
+        assignmentId: inserted[0]?.id,
+        homeSchool: { id: homeSchool.id, name: homeSchool.name, schoolId: homeSchool.school_id },
+        centerSchool: { id: centerSchool.id, name: centerSchool.name, schoolId: centerSchool.school_id },
+      });
+      assignedCount++;
+    }
+
+    res.json({
+      message: `Bulk assignment complete: ${assignedCount} assigned successfully, ${skippedCount} skipped/failed.`,
+      assignedCount,
+      skippedCount,
+      results
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
 
 // GET all center assignments (Board view)

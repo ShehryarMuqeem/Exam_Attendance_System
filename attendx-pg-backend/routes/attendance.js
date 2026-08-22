@@ -42,7 +42,7 @@ router.get('/roster', protect, requireRole('Teacher'), async (req, res) => {
     );
 
     const { rows: attended } = await pool.query(
-      'SELECT student_id, status, copy_number, classroom, marked_at FROM attendance WHERE exam_id=$1',
+      'SELECT student_id, status, copy_number, classroom, marked_at, latitude, longitude, location_address, device_info FROM attendance WHERE exam_id=$1',
       [examId]
     );
     const attendanceMap = {};
@@ -51,21 +51,20 @@ router.get('/roster', protect, requireRole('Teacher'), async (req, res) => {
         status: a.status,
         copyNumber: a.copy_number,
         classroom: a.classroom,
-        markedAt: a.marked_at
+        markedAt: a.marked_at,
+        latitude: a.latitude,
+        longitude: a.longitude,
+        locationAddress: a.location_address,
+        deviceInfo: a.device_info,
       };
     });
 
-    // Deduplicate students by roll_no and unique_id so no duplicate roll numbers appear
-    const seenRolls = new Set();
+    // Deduplicate students by unique student id
     const seenUids = new Set();
     const uniqueStudents = [];
     for (const s of students) {
-      const rollKey = (s.roll_no || '').trim().toLowerCase();
-      const uidKey = (s.unique_id || '').trim().toLowerCase();
-      if (rollKey && seenRolls.has(rollKey)) continue;
-      if (uidKey && seenUids.has(uidKey)) continue;
-      if (rollKey) seenRolls.add(rollKey);
-      if (uidKey) seenUids.add(uidKey);
+      if (s.id && seenUids.has(s.id)) continue;
+      if (s.id) seenUids.add(s.id);
       uniqueStudents.push(s);
     }
 
@@ -89,17 +88,49 @@ router.get('/roster', protect, requireRole('Teacher'), async (req, res) => {
       status: attendanceMap[s.id]?.status || 'Unmarked',
       answerSheetNumber: attendanceMap[s.id]?.copyNumber || null,
       markedAt: attendanceMap[s.id]?.markedAt || null,
+      latitude: attendanceMap[s.id]?.latitude || null,
+      longitude: attendanceMap[s.id]?.longitude || null,
+      locationAddress: attendanceMap[s.id]?.locationAddress || null,
+      deviceInfo: attendanceMap[s.id]?.deviceInfo || null,
     })));
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
-// POST mark attendance (Present)
+// POST mark attendance (Present) — mandatory device location & device info
 router.post('/mark', protect, requireRole('Teacher'), async (req, res) => {
   try {
-    const { studentIdRef, examIdRef, admitCardId, classroom, qrAdmitScanned, qrAnswerScanned, answerSheetNumber, status } = req.body;
+    const {
+      studentIdRef,
+      examIdRef,
+      admitCardId,
+      classroom,
+      qrAdmitScanned,
+      qrAnswerScanned,
+      answerSheetNumber,
+      status,
+      latitude,
+      longitude,
+      locationAddress,
+      deviceInfo,
+      markedAt
+    } = req.body;
+
     const finalCopyNumber = (answerSheetNumber || qrAnswerScanned || '').toString().trim();
     if (!finalCopyNumber) {
       return res.status(400).json({ message: 'Copy / Answer sheet number is required.' });
+    }
+
+    // MANDATORY Location Check
+    const latNum = parseFloat(latitude);
+    const lngNum = parseFloat(longitude);
+    if (latitude === undefined || latitude === null || isNaN(latNum) || longitude === undefined || longitude === null || isNaN(lngNum)) {
+      return res.status(400).json({
+        message: '📍 Location is mandatory! Please turn on device location and grant permissions to mark attendance.'
+      });
+    }
+
+    if (latNum < -90 || latNum > 90 || lngNum < -180 || lngNum > 180) {
+      return res.status(400).json({ message: '❌ Invalid GPS coordinates provided.' });
     }
 
     const { rows: duties } = await pool.query(
@@ -128,24 +159,168 @@ router.post('/mark', protect, requireRole('Teacher'), async (req, res) => {
       });
     }
 
+    // Determine device info and IP
+    const userAgent = req.headers['user-agent'] || 'Unknown';
+    let finalDeviceInfo = (deviceInfo || '').toString().trim();
+    if (!finalDeviceInfo) {
+      const isMobile = /mobile|iphone|ipod|android.*mobile|windows.*phone/i.test(userAgent);
+      const isTablet = /ipad|tablet|android(?!.*mobile)/i.test(userAgent);
+      const devType = isMobile ? 'Mobile' : isTablet ? 'Tablet' : 'Desktop';
+      finalDeviceInfo = `${devType} Browser`;
+    }
+
+    const ipAddress = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || req.ip || '').toString().split(',')[0].trim();
+    const finalMarkedAt = markedAt && !isNaN(new Date(markedAt).getTime()) ? new Date(markedAt).toISOString() : new Date().toISOString();
+
     const { rows } = await pool.query(
-      `INSERT INTO attendance (student_id, exam_id, teacher_id, classroom, qr_admit_scanned, qr_answer_scanned, copy_number, status)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+      `INSERT INTO attendance (
+         student_id, exam_id, teacher_id, classroom, qr_admit_scanned, qr_answer_scanned, 
+         copy_number, status, latitude, longitude, location_address, device_info, user_agent, ip_address, marked_at
+       )
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
        ON CONFLICT (student_id, exam_id) DO UPDATE
-         SET status=$8, qr_answer_scanned=$6, copy_number=$7, marked_at=NOW()
+         SET status=$8, qr_answer_scanned=$6, copy_number=$7, latitude=$9, longitude=$10,
+             location_address=$11, device_info=$12, user_agent=$13, ip_address=$14, marked_at=$15
        RETURNING *`,
       [
-        studentIdRef, examIdRef, req.user.id,
+        studentIdRef,
+        examIdRef,
+        req.user.id,
         classroom || duties[0].classroom,
         qrAdmitScanned || null,
         finalCopyNumber || null,
         finalCopyNumber || null,
-        status || 'Present'
+        status || 'Present',
+        latNum,
+        lngNum,
+        locationAddress || null,
+        finalDeviceInfo.slice(0, 250),
+        userAgent,
+        ipAddress.slice(0, 90),
+        finalMarkedAt
       ]
     );
     res.status(201).json({ message: '✅ Attendance marked!', attendance: rows[0] });
   } catch (err) {
     if (err.code === '23505') return res.status(400).json({ message: 'Attendance already marked for this student.' });
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// POST /sync-offline (Batch synchronize offline attendance records)
+router.post('/sync-offline', protect, requireRole('Teacher'), async (req, res) => {
+  try {
+    const { records } = req.body;
+    if (!Array.isArray(records) || records.length === 0) {
+      return res.status(400).json({ message: 'No records provided for sync' });
+    }
+
+    const userAgent = req.headers['user-agent'] || 'Unknown';
+    const ipAddress = (req.headers['x-forwarded-for'] || req.socket?.remoteAddress || req.ip || '').toString().split(',')[0].trim();
+
+    let syncedCount = 0;
+    let failedCount = 0;
+    const results = [];
+
+    for (const rec of records) {
+      try {
+        const {
+          studentIdRef,
+          examIdRef,
+          classroom,
+          qrAdmitScanned,
+          qrAnswerScanned,
+          answerSheetNumber,
+          status,
+          latitude,
+          longitude,
+          locationAddress,
+          deviceInfo,
+          markedAt,
+          id: clientRecordId
+        } = rec;
+
+        const finalCopy = (answerSheetNumber || qrAnswerScanned || '').toString().trim();
+        if (!studentIdRef || !examIdRef || !finalCopy) {
+          results.push({ clientRecordId, success: false, error: 'Missing required student or copy number' });
+          failedCount++;
+          continue;
+        }
+
+        const latNum = parseFloat(latitude);
+        const lngNum = parseFloat(longitude);
+        if (isNaN(latNum) || isNaN(lngNum)) {
+          results.push({ clientRecordId, success: false, error: 'Missing or invalid location coordinates' });
+          failedCount++;
+          continue;
+        }
+
+        const finalMarkedAt = markedAt && !isNaN(new Date(markedAt).getTime()) ? new Date(markedAt).toISOString() : new Date().toISOString();
+
+        // Check duplicate copy number before sync
+        const { rows: duplicateCopy } = await pool.query(
+          `SELECT a.id, a.copy_number, u.name as student_name, u.roll_no 
+           FROM attendance a 
+           LEFT JOIN users u ON a.student_id = u.id 
+           WHERE a.exam_id = $1 
+             AND (LOWER(TRIM(a.copy_number)) = LOWER(TRIM($2)) OR LOWER(TRIM(a.qr_answer_scanned)) = LOWER(TRIM($2)))
+             AND a.student_id != $3`,
+          [examIdRef, finalCopy, studentIdRef]
+        );
+        if (duplicateCopy.length > 0) {
+          const prevStudent = duplicateCopy[0];
+          results.push({
+            clientRecordId,
+            success: false,
+            error: `❌ Duplicate Copy Number! Copy No. "${finalCopy}" is already assigned to student (Roll No: ${prevStudent.roll_no || '—'}).`
+          });
+          failedCount++;
+          continue;
+        }
+
+        await pool.query(
+          `INSERT INTO attendance (
+             student_id, exam_id, teacher_id, classroom, qr_admit_scanned, qr_answer_scanned,
+             copy_number, status, latitude, longitude, location_address, device_info, user_agent, ip_address, marked_at
+           )
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+           ON CONFLICT (student_id, exam_id) DO UPDATE
+             SET status=$8, qr_answer_scanned=$6, copy_number=$7, latitude=$9, longitude=$10,
+                 location_address=$11, device_info=$12, user_agent=$13, ip_address=$14, marked_at=$15`,
+          [
+            studentIdRef,
+            examIdRef,
+            req.user.id,
+            classroom || '1',
+            qrAdmitScanned || null,
+            finalCopy,
+            finalCopy,
+            status || 'Present',
+            latNum,
+            lngNum,
+            locationAddress || null,
+            (deviceInfo || 'Mobile Browser').slice(0, 250),
+            userAgent,
+            ipAddress.slice(0, 90),
+            finalMarkedAt
+          ]
+        );
+
+        results.push({ clientRecordId, success: true });
+        syncedCount++;
+      } catch (itemErr) {
+        results.push({ clientRecordId: rec.id, success: false, error: itemErr.message });
+        failedCount++;
+      }
+    }
+
+    res.json({
+      message: `Sync complete: ${syncedCount} synced, ${failedCount} failed`,
+      syncedCount,
+      failedCount,
+      results
+    });
+  } catch (err) {
     res.status(500).json({ message: err.message });
   }
 });
@@ -248,17 +423,12 @@ router.get('/absent-list', protect, requireRole('Teacher','BoardAdmin','SchoolAd
       [exam.class, schoolIds]
     );
 
-    // Deduplicate students list
-    const seenRolls = new Set();
+    // Deduplicate students list by unique id
     const seenUids = new Set();
     const uniqueStudents = [];
     for (const s of students) {
-      const rollKey = (s.roll_no || '').trim().toLowerCase();
-      const uidKey = (s.unique_id || '').trim().toLowerCase();
-      if (rollKey && seenRolls.has(rollKey)) continue;
-      if (uidKey && seenUids.has(uidKey)) continue;
-      if (rollKey) seenRolls.add(rollKey);
-      if (uidKey) seenUids.add(uidKey);
+      if (s.id && seenUids.has(s.id)) continue;
+      if (s.id) seenUids.add(s.id);
       uniqueStudents.push(s);
     }
 
@@ -302,6 +472,13 @@ router.get('/', protect, requireRole('BoardAdmin','SchoolAdmin'), async (req, re
     const params = [];
     if (examId)    { params.push(examId);    query += ` AND a.exam_id=$${params.length}`; }
     if (classroom) { params.push(classroom); query += ` AND a.classroom=$${params.length}`; }
+    
+    // If SchoolAdmin, scope to their own school's students or exams hosted at their center
+    if (req.user.role === 'SchoolAdmin' && req.user.school_id) {
+      params.push(req.user.school_id);
+      query += ` AND (u.school_id = $${params.length} OR e.center_id = $${params.length})`;
+    }
+
     query += ' ORDER BY a.marked_at DESC LIMIT 5000';
     const { rows } = await pool.query(query, params);
     res.json(rows.map(r => {
@@ -309,6 +486,9 @@ router.get('/', protect, requireRole('BoardAdmin','SchoolAdmin'), async (req, re
         ? r.student_name
         : (r.student_roll_no ? `Roll No. ${r.student_roll_no}` : (r.student_unique_id || 'Student'));
       const displayRoll = r.student_roll_no || r.student_unique_id || '—';
+      const lat = r.latitude !== null && r.latitude !== undefined ? parseFloat(r.latitude) : null;
+      const lng = r.longitude !== null && r.longitude !== undefined ? parseFloat(r.longitude) : null;
+
       return {
         _id: r.id,
         id: r.id,
@@ -316,6 +496,13 @@ router.get('/', protect, requireRole('BoardAdmin','SchoolAdmin'), async (req, re
         status: r.status || 'Present',
         copyNumber: r.copy_number || '—',
         markedAt: r.marked_at,
+        latitude: lat,
+        longitude: lng,
+        locationAddress: r.location_address || (lat !== null && lng !== null ? `${lat.toFixed(5)}°, ${lng.toFixed(5)}°` : null),
+        deviceInfo: r.device_info || '—',
+        userAgent: r.user_agent || null,
+        ipAddress: r.ip_address || null,
+        googleMapsUrl: lat !== null && lng !== null ? `https://www.google.com/maps?q=${lat},${lng}` : null,
         studentId: {
           id: r.student_id,
           name: displayName,

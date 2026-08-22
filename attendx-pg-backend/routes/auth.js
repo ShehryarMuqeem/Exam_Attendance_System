@@ -11,14 +11,48 @@ router.post('/login', async (req, res) => {
     if (!username || !password)
       return res.status(400).json({ message: 'Username and password required' });
 
+    const cleanUser = username.toLowerCase().trim();
+    const rawUser = username.trim();
+    const strippedUser = username.replace(/[^0-9a-zA-Z]/g, '').toLowerCase();
+
     const { rows } = await pool.query(
-      'SELECT u.*, s.name as school_name, s.school_id as school_code FROM users u LEFT JOIN schools s ON u.school_id = s.id WHERE u.username = $1',
-      [username.toLowerCase().trim()]
+      `SELECT u.*, s.name as school_name, s.school_id as school_code, s.principal_name, s.principal_cnic
+       FROM users u
+       LEFT JOIN schools s ON u.school_id = s.id
+       WHERE LOWER(u.username) = $1
+          OR LOWER(u.unique_id) = $1
+          OR LOWER(COALESCE(u.email, '')) = $1
+          OR (u.cnic IS NOT NULL AND REPLACE(REPLACE(u.cnic, '-', ''), ' ', '') = $2)
+          OR (s.principal_cnic IS NOT NULL AND REPLACE(REPLACE(s.principal_cnic, '-', ''), ' ', '') = $2 AND u.role = 'SchoolAdmin')
+          OR (s.school_id IS NOT NULL AND LOWER(s.school_id) = $1 AND u.role = 'SchoolAdmin')
+       ORDER BY CASE WHEN u.role = 'SchoolAdmin' THEN 1 WHEN u.role = 'BoardAdmin' THEN 2 WHEN u.role = 'Teacher' THEN 3 ELSE 4 END ASC
+       LIMIT 1`,
+      [cleanUser, strippedUser]
     );
     const user = rows[0];
     if (!user) return res.status(401).json({ message: 'User not found. Contact Admin.' });
 
-    const match = await bcrypt.compare(password, user.password);
+    let match = await bcrypt.compare(password, user.password);
+
+    // If exact password doesn't match, test stripped/formatted variants and CNIC match
+    if (!match) {
+      const cleanInputPw = String(password || '').replace(/[^0-9a-zA-Z]/g, '');
+      const userCnicClean = String(user.cnic || user.principal_cnic || '').replace(/[^0-9a-zA-Z]/g, '');
+
+      if (cleanInputPw && cleanInputPw !== password) {
+        match = await bcrypt.compare(cleanInputPw, user.password);
+      }
+
+      // If the entered password matches the Principal's CNIC on record
+      if (!match && userCnicClean && cleanInputPw && userCnicClean === cleanInputPw) {
+        match = true;
+        // Auto-heal and sync the hash in the database to the CNIC
+        try {
+          const newHash = await bcrypt.hash(cleanInputPw, 10);
+          await pool.query('UPDATE users SET password = $1 WHERE id = $2', [newHash, user.id]);
+        } catch (_) {}
+      }
+    }
     if (!match) return res.status(401).json({ message: 'Incorrect password.' });
 
     if (user.status === 'Inactive')

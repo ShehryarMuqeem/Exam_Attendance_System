@@ -2,13 +2,18 @@ import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 
-// Page — replaces <div className="phone"> in every page component.
-// On mobile: renders as a white full-screen column.
-// On desktop: AppLayout handles the outer shell; this just provides
-// the inner content container (white bg, flex column, full height).
+// Global top loading bar shown when an API request is in-flight
+export function TopLoadingBar() {
+  const { isRequestActive } = useApp();
+  if (!isRequestActive) return null;
+  return <div className="top-loading-bar" />;
+}
+
+// Page — container with global progress bar and toast
 export function Page({ children, style }) {
   return (
-    <div style={{ display:'flex', flexDirection:'column', minHeight:'100%', background:'#fff', ...style }}>
+    <div style={{ display:'flex', flexDirection:'column', minHeight:'100%', background:'#fff', position:'relative', ...style }}>
+      <TopLoadingBar />
       {children}
     </div>
   );
@@ -16,7 +21,7 @@ export function Page({ children, style }) {
 
 // SearchableSelect — type-to-filter dropdown
 // options: [{ value, label }]
-export function SearchableSelect({ options = [], value, onChange, placeholder = 'Search...', label }) {
+export function SearchableSelect({ options = [], value, onChange, placeholder = 'Search...', label, required, error, helperText }) {
   const [query, setQuery] = React.useState('');
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef(null);
@@ -37,7 +42,6 @@ export function SearchableSelect({ options = [], value, onChange, placeholder = 
   // Focus input when dropdown opens — using ref avoids autoFocus re-render issues
   React.useEffect(() => {
     if (open && inputRef.current) {
-      // Small timeout ensures the dropdown is mounted before focusing
       const t = setTimeout(() => inputRef.current?.focus(), 10);
       return () => clearTimeout(t);
     }
@@ -63,26 +67,25 @@ export function SearchableSelect({ options = [], value, onChange, placeholder = 
   };
 
   return (
-    <div ref={ref} style={{ position: 'relative' }}>
+    <div ref={ref} className={`input-group ${error ? 'has-error' : ''}`} style={{ position: 'relative' }}>
       {label && (
-        <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray-600)', textTransform: 'uppercase', letterSpacing: .4, marginBottom: 5 }}>
+        <label>
           {label}
-        </div>
+          {required && <span className="req-star" title="Required field">*</span>}
+        </label>
       )}
 
       {/* Trigger */}
       <div
         onClick={() => setOpen(o => !o)}
+        className={`input-field ${error ? 'input-error' : ''}`}
         style={{
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-          padding: '11px 14px', border: `1.5px solid ${open ? 'var(--blue-light)' : 'var(--gray-200)'}`,
-          borderRadius: 'var(--radius)', background: 'var(--white)', cursor: 'pointer',
-          boxShadow: open ? '0 0 0 3px rgba(34,85,212,.08)' : 'none',
-          transition: 'border-color .15s, box-shadow .15s',
+          cursor: 'pointer',
           userSelect: 'none',
         }}
       >
-        <span style={{ fontSize: 13, color: selected ? 'var(--gray-800)' : 'var(--gray-400)', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <span style={{ fontSize: 13, color: selected ? 'var(--gray-900)' : 'var(--gray-400)', fontWeight: selected ? 600 : 400, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {selected ? selected.label : placeholder}
         </span>
         <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
@@ -93,6 +96,9 @@ export function SearchableSelect({ options = [], value, onChange, placeholder = 
         </div>
       </div>
 
+      {error && <div className="field-error-msg">⚠️ {error}</div>}
+      {helperText && !error && <div className="field-helper-msg">{helperText}</div>}
+
       {/* Dropdown */}
       {open && (
         <div style={{
@@ -101,8 +107,8 @@ export function SearchableSelect({ options = [], value, onChange, placeholder = 
           borderRadius: 'var(--radius)', boxShadow: 'var(--shadow-lg)',
           zIndex: 300, overflow: 'hidden',
         }}>
-          {/* Search input — NO autoFocus, we use ref + useEffect instead */}
-          <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--gray-100)' }}>
+          {/* Search input */}
+          <div style={{ padding: '8px 10px', borderBottom: '1px solid var(--gray-100)', background: 'var(--gray-50)' }}>
             <input
               ref={inputRef}
               value={query}
@@ -121,7 +127,7 @@ export function SearchableSelect({ options = [], value, onChange, placeholder = 
           <div style={{ maxHeight: 220, overflowY: 'auto' }}>
             {filtered.length === 0 ? (
               <div style={{ padding: '12px 14px', fontSize: 12, color: 'var(--gray-400)', textAlign: 'center' }}>
-                No results found
+                No matching results found
               </div>
             ) : (
               filtered.map(opt => (
@@ -160,11 +166,29 @@ export function StatusBar({ theme = 'light' }) {
   );
 }
 
+// Rich floating toast prompt with clear visibility & dismiss
 export function Toast() {
-  const { toast } = useApp();
+  const { toast, hideToast } = useApp();
   if (!toast) return null;
+
+  const type = toast.type || 'success';
+  const icons = {
+    success: '✅',
+    error: '❌',
+    info: 'ℹ️',
+    warning: '⚠️',
+  };
+
   return (
-    <div className={`toast ${toast.type}`} key={toast.id}>{toast.msg}</div>
+    <div className={`toast-container`} key={toast.id}>
+      <div className={`toast-card toast-${type} toast ${type}`}>
+        <span className="toast-icon">{icons[type] || '🔔'}</span>
+        <div className="toast-body">
+          <span className="toast-text">{toast.msg}</span>
+        </div>
+        <button className="toast-close" onClick={hideToast} title="Dismiss">✕</button>
+      </div>
+    </div>
   );
 }
 
@@ -184,10 +208,11 @@ export function BottomNav({ role }) {
       { path: '/admin/analytics',         icon: '📊', label: 'Analytics' },
     ],
     School: [
-      { path: '/school',          icon: '🏠', label: 'Home'     },
-      { path: '/school/students', icon: '🎓', label: 'Students' },
-      { path: '/school/teachers', icon: '👩‍🏫', label: 'Teachers' },
-      { path: '/school/center',   icon: '📍', label: 'Center'   },
+      { path: '/school',            icon: '🏠', label: 'Home'     },
+      { path: '/school/students',   icon: '🎓', label: 'Students' },
+      { path: '/school/teachers',   icon: '👩‍🏫', label: 'Teachers' },
+      { path: '/school/attendance', icon: '✅', label: 'Attend.'   },
+      { path: '/school/center',     icon: '📍', label: 'Center'   },
     ],
     Teacher: [
       { path: '/teacher',                 icon: '🏠', label: 'Home'    },
@@ -308,25 +333,39 @@ export function AmsHeader({ title, subtitle }) {
   );
 }
 
-export function InputField({ label, ...props }) {
+export function InputField({ label, required, error, helperText, className = '', ...props }) {
   return (
-    <div className="input-group">
-      {label && <label>{label}</label>}
-      <input className="input-field" {...props} />
+    <div className={`input-group ${error ? 'has-error' : ''}`}>
+      {label && (
+        <label>
+          {label}
+          {required && <span className="req-star" title="Required field">*</span>}
+        </label>
+      )}
+      <input className={`input-field ${error ? 'input-error' : ''} ${className}`} {...props} />
+      {error && <div className="field-error-msg">⚠️ {error}</div>}
+      {helperText && !error && <div className="field-helper-msg">{helperText}</div>}
     </div>
   );
 }
 
-export function SelectField({ label, options, ...props }) {
+export function SelectField({ label, options = [], required, error, helperText, className = '', ...props }) {
   return (
-    <div className="input-group">
-      {label && <label>{label}</label>}
-      <select className="input-field" {...props}>
-        <option value="">Select {label}</option>
+    <div className={`input-group ${error ? 'has-error' : ''}`}>
+      {label && (
+        <label>
+          {label}
+          {required && <span className="req-star" title="Required field">*</span>}
+        </label>
+      )}
+      <select className={`input-field ${error ? 'input-error' : ''} ${className}`} {...props}>
+        <option value="">Select {label || 'Option'}</option>
         {options.map(o => (
           <option key={o.value ?? o} value={o.value ?? o}>{o.label ?? o}</option>
         ))}
       </select>
+      {error && <div className="field-error-msg">⚠️ {error}</div>}
+      {helperText && !error && <div className="field-helper-msg">{helperText}</div>}
     </div>
   );
 }
@@ -361,17 +400,45 @@ export function SearchBar({ value, onChange, onFilterToggle, filterActive }) {
   );
 }
 
-export function ConfirmModal({ open, onClose, onConfirm, title, message }) {
+export function ConfirmModal({ open, onClose, onConfirm, title, message, confirmText = 'Confirm', confirmType = 'red' }) {
   if (!open) return null;
+  const isRed = confirmType === 'red';
+
   return (
-    <div className="modal-overlay">
-      <div className="modal-sheet">
-        <div className="modal-handle" />
-        <div className="modal-title" style={{ color: '#dc2626' }}>⚠️ {title}</div>
-        <p style={{ fontSize: 13, color: 'var(--gray-600)', marginBottom: 20, lineHeight: 1.6 }}>{message}</p>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Cancel</button>
-          <button className="btn btn-red" style={{ flex: 1 }} onClick={() => { onConfirm(); onClose(); }}>Confirm</button>
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" onClick={e => e.stopPropagation()} style={{ border: isRed ? '2px solid #fecaca' : '2px solid #bfdbfe' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+          <div style={{
+            width: 42, height: 42, borderRadius: '50%',
+            background: isRed ? '#fee2e2' : '#eff6ff',
+            color: isRed ? '#dc2626' : '#2563eb',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 20, flexShrink: 0
+          }}>
+            {isRed ? '⚠️' : 'ℹ️'}
+          </div>
+          <div>
+            <div className="modal-title" style={{ margin: 0, color: isRed ? '#991b1b' : '#1e3a8a', fontSize: 16, fontWeight: 800 }}>
+              {title}
+            </div>
+          </div>
+        </div>
+
+        <p style={{ fontSize: 13, color: 'var(--gray-700)', marginBottom: 20, lineHeight: 1.6 }}>
+          {message}
+        </p>
+
+        <div className="modal-actions" style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+          <button className="btn btn-ghost" onClick={onClose} style={{ flex: 1 }}>
+            Cancel
+          </button>
+          <button
+            className={`btn ${isRed ? 'btn-red' : 'btn-primary'}`}
+            style={{ flex: 1, fontWeight: 800 }}
+            onClick={() => { onConfirm(); onClose(); }}
+          >
+            {confirmText}
+          </button>
         </div>
       </div>
     </div>

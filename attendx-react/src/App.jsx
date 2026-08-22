@@ -22,11 +22,12 @@ const NAV_LINKS = {
     { path:'/admin/analytics',         icon:'📊', label:'Analytics' },
   ],
   SchoolAdmin: [
-    { path:'/school',           icon:'🏠', label:'Home'     },
-    { path:'/school/students',  icon:'🎓', label:'Students' },
-    { path:'/school/teachers',  icon:'👩‍🏫', label:'Teachers' },
-    { path:'/school/duties',    icon:'📋', label:'Duties'   },
-    { path:'/school/center',    icon:'📍', label:'Center'   },
+    { path:'/school',            icon:'🏠', label:'Home'     },
+    { path:'/school/students',   icon:'🎓', label:'Students' },
+    { path:'/school/teachers',   icon:'👩‍🏫', label:'Teachers' },
+    { path:'/school/duties',     icon:'📋', label:'Duties'   },
+    { path:'/school/attendance', icon:'✅', label:'Attend.' },
+    { path:'/school/center',     icon:'📍', label:'Center'   },
   ],
   Teacher: [
     { path:'/teacher',                  icon:'🏠', label:'Home'    },
@@ -272,6 +273,7 @@ function AppRoutes() {
         <Route path="/school/teachers"        element={<ProtectedRoute requiredRole="SchoolAdmin"><SchoolTeachers /></ProtectedRoute>} />
         <Route path="/school/teachers/add"    element={<ProtectedRoute requiredRole="SchoolAdmin"><AddSchoolTeacher /></ProtectedRoute>} />
         <Route path="/school/duties"          element={<ProtectedRoute requiredRole="SchoolAdmin"><SchoolAssignDuty /></ProtectedRoute>} />
+        <Route path="/school/attendance"      element={<ProtectedRoute requiredRole="SchoolAdmin"><AttendanceOverview /></ProtectedRoute>} />
         <Route path="/school/center"          element={<ProtectedRoute requiredRole="SchoolAdmin"><SchoolCenterDetails /></ProtectedRoute>} />
 
         {/* Teacher */}

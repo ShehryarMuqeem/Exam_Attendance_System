@@ -1,3 +1,4 @@
+
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -124,6 +125,12 @@ async function initDB() {
         copy_number VARCHAR(100),
         status VARCHAR(20) DEFAULT 'Present',
         marked_at TIMESTAMP DEFAULT NOW(),
+        latitude NUMERIC(10, 7),
+        longitude NUMERIC(10, 7),
+        location_address TEXT,
+        device_info VARCHAR(255),
+        user_agent TEXT,
+        ip_address VARCHAR(100),
         UNIQUE(student_id, exam_id)
       );
 
@@ -163,6 +170,14 @@ async function initDB() {
         resolved_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
         new_password_plain VARCHAR(100)
       );
+
+      CREATE TABLE IF NOT EXISTS school_blocks (
+        id SERIAL PRIMARY KEY,
+        school_id INTEGER REFERENCES schools(id) ON DELETE CASCADE,
+        block_name VARCHAR(100) NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(school_id, block_name)
+      );
     `);
 
     // Seed default academic years if empty
@@ -200,7 +215,11 @@ async function initDB() {
       // ===== Column migrations FIRST (before indexes that depend on them) =====
       const migrations = [
         `ALTER TABLE schools ADD COLUMN IF NOT EXISTS district VARCHAR(100) NOT NULL DEFAULT ''`,
+        `ALTER TABLE schools ADD COLUMN IF NOT EXISTS principal_name VARCHAR(255)`,
+        `ALTER TABLE schools ADD COLUMN IF NOT EXISTS principal_cnic VARCHAR(50)`,
         `ALTER TABLE users ADD COLUMN IF NOT EXISTS academic_year VARCHAR(30)`,
+        `ALTER TABLE users ADD COLUMN IF NOT EXISTS cnic VARCHAR(50)`,
+        `ALTER TABLE users ADD COLUMN IF NOT EXISTS plain_password VARCHAR(100)`,
         `ALTER TABLE exams ADD COLUMN IF NOT EXISTS center_id INTEGER REFERENCES schools(id) ON DELETE CASCADE`,
         `ALTER TABLE exams ADD COLUMN IF NOT EXISTS academic_year VARCHAR(20)`,
         `ALTER TABLE exams ADD COLUMN IF NOT EXISTS term VARCHAR(40)`,
@@ -209,6 +228,13 @@ async function initDB() {
         `ALTER TABLE attendance ADD COLUMN IF NOT EXISTS qr_admit_scanned VARCHAR(100)`,
         `ALTER TABLE attendance ADD COLUMN IF NOT EXISTS qr_answer_scanned VARCHAR(100)`,
         `ALTER TABLE attendance ADD COLUMN IF NOT EXISTS copy_number VARCHAR(100)`,
+        `ALTER TABLE attendance ADD COLUMN IF NOT EXISTS latitude NUMERIC(10, 7)`,
+        `ALTER TABLE attendance ADD COLUMN IF NOT EXISTS longitude NUMERIC(10, 7)`,
+        `ALTER TABLE attendance ADD COLUMN IF NOT EXISTS location_address TEXT`,
+        `ALTER TABLE attendance ADD COLUMN IF NOT EXISTS device_info VARCHAR(255)`,
+        `ALTER TABLE attendance ADD COLUMN IF NOT EXISTS user_agent TEXT`,
+        `ALTER TABLE attendance ADD COLUMN IF NOT EXISTS ip_address VARCHAR(100)`,
+        `ALTER TABLE attendance ALTER COLUMN marked_at TYPE TIMESTAMPTZ`,
         `ALTER TABLE exams ALTER COLUMN name DROP NOT NULL`,
         `ALTER TABLE exams ALTER COLUMN section DROP NOT NULL`,
       ];
@@ -226,6 +252,7 @@ async function initDB() {
         `CREATE INDEX IF NOT EXISTS idx_duty_teacher_exam ON duty_assignments(teacher_id, exam_id)`,
         `CREATE INDEX IF NOT EXISTS idx_center_home ON center_assignments(home_school_id)`,
         `CREATE INDEX IF NOT EXISTS idx_center_center ON center_assignments(center_school_id)`,
+        `CREATE UNIQUE INDEX IF NOT EXISTS idx_attendance_exam_copy ON attendance(exam_id, LOWER(TRIM(copy_number))) WHERE copy_number IS NOT NULL AND TRIM(copy_number) != ''`,
       ];
       for (const sql of indexes) {
         try { await client.query(sql); }
