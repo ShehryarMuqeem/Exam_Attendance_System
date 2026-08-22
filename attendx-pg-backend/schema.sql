@@ -4,6 +4,9 @@ CREATE TABLE IF NOT EXISTS schools (
   id SERIAL PRIMARY KEY,
   school_id VARCHAR(20) UNIQUE NOT NULL,
   name VARCHAR(255) NOT NULL,
+  district VARCHAR(100) NOT NULL DEFAULT '',
+  principal_name VARCHAR(255),
+  principal_cnic VARCHAR(50),
   address TEXT,
   phone VARCHAR(50),
   email VARCHAR(255),
@@ -17,6 +20,7 @@ CREATE TABLE IF NOT EXISTS users (
   name VARCHAR(255) NOT NULL,
   email VARCHAR(255),
   phone VARCHAR(50),
+  cnic VARCHAR(50),
   username VARCHAR(100) UNIQUE NOT NULL,
   password VARCHAR(255) NOT NULL,
   role VARCHAR(20) NOT NULL CHECK (role IN ('BoardAdmin','SchoolAdmin','Teacher','Student')),
@@ -77,10 +81,17 @@ CREATE TABLE IF NOT EXISTS attendance (
   admit_card_id INTEGER REFERENCES admit_cards(id),
   teacher_id INTEGER REFERENCES users(id),
   classroom VARCHAR(20) NOT NULL,
-  qr_admit_scanned VARCHAR(50),
-  qr_answer_scanned VARCHAR(50),
+  qr_admit_scanned VARCHAR(100),
+  qr_answer_scanned VARCHAR(100),
+  copy_number VARCHAR(100),
   status VARCHAR(20) DEFAULT 'Present',
   marked_at TIMESTAMP DEFAULT NOW(),
+  latitude NUMERIC(10, 7),
+  longitude NUMERIC(10, 7),
+  location_address TEXT,
+  device_info VARCHAR(255),
+  user_agent TEXT,
+  ip_address VARCHAR(100),
   UNIQUE(student_id, exam_id)
 );
 
@@ -88,5 +99,13 @@ CREATE TABLE IF NOT EXISTS academic_years (
   id SERIAL PRIMARY KEY,
   year_name VARCHAR(50) UNIQUE NOT NULL,
   created_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS school_blocks (
+  id SERIAL PRIMARY KEY,
+  school_id INTEGER REFERENCES schools(id) ON DELETE CASCADE,
+  block_name VARCHAR(100) NOT NULL,
+  created_at TIMESTAMP DEFAULT NOW(),
+  UNIQUE(school_id, block_name)
 );
 

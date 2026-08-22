@@ -2,25 +2,312 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { AmsHeader, PageHeader, BottomNav, Toast, Page } from '../components/Shared';
+import {
+  cacheAssignedExams,
+  getCachedAssignedExams,
+  cacheExamRoster,
+  getCachedExamRoster,
+  saveOfflineAttendance,
+  getOfflineQueue
+} from '../utils/offlineStorage';
+
+// ===== NETWORK & SYNC STATUS BADGE COMPONENT =====
+function NetworkSyncBadge() {
+  const { isOnline, offlineCount, isSyncing, syncOfflineNow } = useApp();
+
+  return (
+    <div style={{
+      background: isOnline ? (offlineCount > 0 ? '#fffbeb' : '#f0fdf4') : '#fef2f2',
+      border: `1px solid ${isOnline ? (offlineCount > 0 ? '#fde68a' : '#bbf7d0') : '#fecaca'}`,
+      borderRadius: 12,
+      padding: '8px 12px',
+      marginBottom: 14,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 10,
+      fontSize: 11
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+        <span style={{ fontSize: 13 }}>{isOnline ? (offlineCount > 0 ? '🟡' : '🟢') : '📶'}</span>
+        <div>
+          <span style={{ fontWeight: 800, color: isOnline ? (offlineCount > 0 ? '#92400e' : '#166534') : '#991b1b' }}>
+            {isOnline ? 'Online' : 'Offline Mode (Remote Area)'}
+          </span>
+          {offlineCount > 0 && (
+            <span style={{ color: 'var(--gray-600)', marginLeft: 6 }}>
+              · <strong>{offlineCount}</strong> record(s) queued locally
+            </span>
+          )}
+        </div>
+      </div>
+
+      {offlineCount > 0 && isOnline && (
+        <button
+          className="btn btn-primary btn-sm"
+          style={{ padding: '4px 10px', fontSize: 11, background: '#0a1f6b', display: 'flex', alignItems: 'center', gap: 4 }}
+          onClick={syncOfflineNow}
+          disabled={isSyncing}
+        >
+          {isSyncing ? '⏳ Syncing...' : '🔄 Sync Now'}
+        </button>
+      )}
+    </div>
+  );
+}
+
+// ===== LIVE EXAM TIMER COMPONENT =====
+export function LiveExamTimer({ currentExam, compact = false }) {
+  const [now, setNow] = useState(() => new Date());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // Format digital clock time (HH:MM:SS AM/PM)
+  const currentTimeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+  const currentDateStr = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
+
+  if (!currentExam) {
+    return (
+      <div style={{
+        background: '#f8fafc',
+        border: '1px solid var(--gray-200)',
+        borderRadius: 14,
+        padding: compact ? '8px 12px' : '12px 16px',
+        marginBottom: 14,
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        flexWrap: 'wrap',
+        gap: 8,
+        boxShadow: 'var(--shadow)'
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 18 }}>🕒</span>
+          <div>
+            <div style={{ fontSize: 11, color: 'var(--gray-500)', fontWeight: 600 }}>Current System Time ({currentDateStr})</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', fontFamily: 'monospace', letterSpacing: 0.5 }}>
+              {currentTimeStr}
+            </div>
+          </div>
+        </div>
+        <div style={{
+          background: '#fef3c7',
+          color: '#92400e',
+          border: '1px solid #fde68a',
+          padding: '4px 10px',
+          borderRadius: 8,
+          fontSize: 11,
+          fontWeight: 700
+        }}>
+          No Active Exam Right Now
+        </div>
+      </div>
+    );
+  }
+
+  // Parse exam date and time
+  const examDateStr = currentExam.date || new Date().toLocaleDateString('en-CA');
+  const examTimeStr = currentExam.time || '09:00';
+  const durationMins = Number(currentExam.duration) || 180;
+
+  // Compute start and end timestamps in local timezone
+  const [startH, startM] = examTimeStr.split(':').map(Number);
+  const [year, month, day] = examDateStr.split('-').map(Number);
+  const examStart = new Date(year, month - 1, day, startH || 0, startM || 0, 0, 0);
+
+  const examEnd = new Date(examStart.getTime() + durationMins * 60 * 1000);
+
+  const nowMs = now.getTime();
+  const startMs = examStart.getTime();
+  const endMs = examEnd.getTime();
+
+  const totalDurationMs = durationMins * 60 * 1000;
+  const isUpcoming = nowMs < startMs;
+  const isOngoing = nowMs >= startMs && nowMs <= endMs;
+  const isEnded = nowMs > endMs;
+
+  // Remaining / Elapsed Calculations
+  let remainingMs = 0;
+  let elapsedMs = 0;
+  let percentProgress = 0;
+
+  if (isUpcoming) {
+    remainingMs = Math.max(0, startMs - nowMs);
+  } else if (isOngoing) {
+    remainingMs = Math.max(0, endMs - nowMs);
+    elapsedMs = Math.max(0, nowMs - startMs);
+    percentProgress = Math.min(100, Math.max(0, Math.round((elapsedMs / totalDurationMs) * 100)));
+  } else {
+    percentProgress = 100;
+    elapsedMs = totalDurationMs;
+  }
+
+  const formatHMS = (ms) => {
+    const totalSecs = Math.floor(ms / 1000);
+    const hrs = Math.floor(totalSecs / 3600);
+    const mins = Math.floor((totalSecs % 3600) / 60);
+    const secs = totalSecs % 60;
+    return `${String(hrs).padStart(2, '0')}h : ${String(mins).padStart(2, '0')}m : ${String(secs).padStart(2, '0')}s`;
+  };
+
+  const isWarningTime = isOngoing && remainingMs <= 15 * 60 * 1000;
+  const isCriticalTime = isOngoing && remainingMs <= 5 * 60 * 1000;
+
+  const bgGradient = isCriticalTime
+    ? 'linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%)'
+    : isWarningTime
+    ? 'linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%)'
+    : isOngoing
+    ? 'linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%)'
+    : isUpcoming
+    ? 'linear-gradient(135deg, #eff6ff 0%, #dbeafe 100%)'
+    : '#f8fafc';
+
+  const borderColor = isCriticalTime
+    ? '#ef4444'
+    : isWarningTime
+    ? '#f59e0b'
+    : isOngoing
+    ? '#22c55e'
+    : isUpcoming
+    ? '#3b82f6'
+    : '#cbd5e1';
+
+  return (
+    <div style={{
+      background: bgGradient,
+      border: `2px solid ${borderColor}`,
+      borderRadius: 14,
+      padding: compact ? '10px 14px' : '14px 18px',
+      marginBottom: 16,
+      boxShadow: '0 4px 12px rgba(0,0,0,0.06)',
+      position: 'relative',
+      overflow: 'hidden'
+    }}>
+      {/* Header bar of the timer */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8, marginBottom: 8 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {isOngoing && (
+            <span style={{
+              display: 'inline-block',
+              width: 10,
+              height: 10,
+              borderRadius: '50%',
+              background: isCriticalTime ? '#ef4444' : isWarningTime ? '#f59e0b' : '#22c55e',
+              boxShadow: `0 0 0 3px ${isCriticalTime ? 'rgba(239,68,68,0.3)' : isWarningTime ? 'rgba(245,158,11,0.3)' : 'rgba(34,197,94,0.3)'}`,
+            }} />
+          )}
+          <span style={{
+            fontSize: 11,
+            fontWeight: 800,
+            textTransform: 'uppercase',
+            letterSpacing: 0.5,
+            color: isCriticalTime ? '#b91c1c' : isWarningTime ? '#b45309' : isOngoing ? '#15803d' : isUpcoming ? '#1d4ed8' : '#475569'
+          }}>
+            {isCriticalTime ? '🚨 FINAL 5 MINS ALERT' : isWarningTime ? '⚠️ 15 MINS WARNING' : isOngoing ? '🟢 LIVE EXAM IN PROGRESS' : isUpcoming ? '🕒 EXAM STARTING SOON' : '🏁 EXAM CONCLUDED'}
+          </span>
+          <span style={{ fontSize: 11, color: 'var(--gray-500)', fontWeight: 600 }}>
+            · Room: <strong>{currentExam.classroom || 'Main Hall'}</strong>
+          </span>
+        </div>
+
+        {/* Live Clock */}
+        <div style={{ fontSize: 11, color: 'var(--gray-600)', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span>Clock:</span>
+          <strong style={{ fontFamily: 'monospace', fontSize: 12, color: '#0f172a' }}>{currentTimeStr}</strong>
+        </div>
+      </div>
+
+      {/* Main Subject & Timer Details */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12, marginTop: 4 }}>
+        <div>
+          <div style={{ fontSize: 17, fontWeight: 900, color: '#0f172a' }}>
+            {currentExam.subject}
+          </div>
+          <div style={{ fontSize: 12, color: 'var(--gray-600)', marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <span>Class: <strong>{currentExam.class || 'SSC'}</strong></span>
+            <span>· Scheduled: <strong>{examTimeStr}</strong> ({durationMins} mins)</span>
+          </div>
+        </div>
+
+        {/* Countdown Pill Display */}
+        <div style={{
+          background: '#fff',
+          border: `1.5px solid ${borderColor}`,
+          borderRadius: 12,
+          padding: '8px 16px',
+          textAlign: 'center',
+          boxShadow: '0 2px 6px rgba(0,0,0,0.04)'
+        }}>
+          <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--gray-500)', letterSpacing: 0.5 }}>
+            {isUpcoming ? 'Starts In' : isOngoing ? 'Time Remaining' : 'Status'}
+          </div>
+          <div style={{
+            fontSize: 18,
+            fontWeight: 900,
+            fontFamily: 'monospace',
+            letterSpacing: 1,
+            color: isCriticalTime ? '#dc2626' : isWarningTime ? '#d97706' : isOngoing ? '#16a34a' : isUpcoming ? '#2563eb' : '#64748b'
+          }}>
+            {isOngoing || isUpcoming ? formatHMS(remainingMs) : 'Completed'}
+          </div>
+        </div>
+      </div>
+
+      {/* Progress Bar for Ongoing Exam */}
+      {isOngoing && (
+        <div style={{ marginTop: 12 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, fontWeight: 700, color: 'var(--gray-500)', marginBottom: 4 }}>
+            <span>Elapsed: {formatHMS(elapsedMs)}</span>
+            <span>{percentProgress}% Completed</span>
+          </div>
+          <div style={{ width: '100%', height: 6, background: 'rgba(0,0,0,0.08)', borderRadius: 4, overflow: 'hidden' }}>
+            <div style={{
+              width: `${percentProgress}%`,
+              height: '100%',
+              background: isCriticalTime ? '#ef4444' : isWarningTime ? '#f59e0b' : '#22c55e',
+              transition: 'width 1s ease'
+            }} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ===== TEACHER DASHBOARD =====
 export function TeacherDashboard() {
   const navigate = useNavigate();
   const { api, currentUser } = useApp();
   const [currentExam, setCurrentExam] = useState(null);
-  const [todayCount, setTodayCount] = useState(0);
 
   useEffect(() => {
     const localDate = new Date().toLocaleDateString('en-CA');
     const localTime = new Date().toTimeString().slice(0, 5);
-    api(`/attendance/current-exam?date=${localDate}&time=${localTime}`).then(d => setCurrentExam(d.currentExam)).catch(() => {});
+    api(`/attendance/current-exam?date=${localDate}&time=${localTime}`)
+      .then(d => {
+        setCurrentExam(d.currentExam);
+        cacheAssignedExams(d);
+      })
+      .catch(() => {
+        // Fallback to cache when offline
+        const cached = getCachedAssignedExams();
+        if (cached?.data) {
+          setCurrentExam(cached.data.currentExam);
+        }
+      });
   }, [api]);
 
   return (
     <Page>
       <Toast />
-      <AmsHeader title="Teacher Panel" subtitle="Mark attendance for your assigned classroom." />
+      <AmsHeader title="Teacher Panel" subtitle="Mark attendance for your assigned exam block." />
       <div className="page-content">
+        <NetworkSyncBadge />
+
         <div style={{ background:'#e0f5ff', borderRadius:12, padding:'12px 14px', marginBottom:14 }}>
           {currentUser?.schoolName && (
             <div style={{ fontSize:11, fontWeight:700, color:'#0891b2', textTransform:'uppercase', letterSpacing:0.5, marginBottom:4 }}>
@@ -30,21 +317,12 @@ export function TeacherDashboard() {
           <div style={{ fontWeight:700, fontSize:13, color:'#0891b2' }}>👩‍🏫 {currentUser?.name}</div>
           <div style={{ fontSize:11, color:'var(--gray-600)', marginTop:2 }}>
             ID: {currentUser?.uniqueId}
-            {currentUser?.assignedClassroom && ` · Room: ${currentUser.assignedClassroom}`}
+            {currentUser?.assignedClassroom && ` · 📍 Block: ${currentUser.assignedClassroom}`}
           </div>
         </div>
 
-        {currentExam ? (
-          <div style={{ background:'#dcfce7', border:'2px solid #16a34a', borderRadius:12, padding:'12px 16px', marginBottom:16, textAlign:'center' }}>
-            <div style={{ fontSize:10, color:'#166534', fontWeight:700, textTransform:'uppercase', letterSpacing:0.5 }}>Active Exam Right Now</div>
-            <div style={{ fontSize:16, fontWeight:800, color:'#14532d', marginTop:2 }}>{currentExam.subject}</div>
-            <div style={{ fontSize:11, color:'#166534', marginTop:2 }}>{currentExam.date} · {currentExam.time} · {currentExam.class}</div>
-          </div>
-        ) : (
-          <div style={{ background:'#fef3c7', border:'2px solid #d97706', borderRadius:12, padding:'12px 16px', marginBottom:16, textAlign:'center' }}>
-            <div style={{ fontSize:12, color:'#92400e', fontWeight:700 }}>⚠️ No active exam right now</div>
-          </div>
-        )}
+        {/* Live Exam Countdown Timer */}
+        <LiveExamTimer currentExam={currentExam} />
 
         <div className="wide-grid">
           <div onClick={()=>navigate('/teacher/mark-attendance')} style={{ background:'#fff', borderRadius:14, padding:16, border:'1px solid var(--gray-100)', cursor:'pointer', display:'flex', alignItems:'center', gap:14 }}>
@@ -80,8 +358,30 @@ export function TeacherDashboard() {
 
 const STEPS = { IDLE:'IDLE', SCAN_ADMIT:'SCAN_ADMIT', SCAN_ANSWER:'SCAN_ANSWER', PREVIEW:'PREVIEW', SUCCESS:'SUCCESS', ERROR:'ERROR' };
 
+function getDeviceInfo() {
+  const ua = navigator.userAgent || '';
+  const isMobile = /mobile|iphone|ipod|android.*mobile|windows.*phone/i.test(ua);
+  const isTablet = /ipad|tablet|android(?!.*mobile)/i.test(ua);
+  const deviceType = isMobile ? 'Mobile' : isTablet ? 'Tablet' : 'Desktop';
+
+  let os = 'Unknown OS';
+  if (/windows/i.test(ua)) os = 'Windows';
+  else if (/macintosh|mac os x/i.test(ua)) os = 'macOS';
+  else if (/android/i.test(ua)) os = 'Android';
+  else if (/ios|iphone|ipad|ipod/i.test(ua)) os = 'iOS';
+  else if (/linux/i.test(ua)) os = 'Linux';
+
+  let browser = 'Browser';
+  if (/edg/i.test(ua)) browser = 'Edge';
+  else if (/chrome|crios/i.test(ua)) browser = 'Chrome';
+  else if (/firefox|fxios/i.test(ua)) browser = 'Firefox';
+  else if (/safari/i.test(ua)) browser = 'Safari';
+
+  return `${deviceType} • ${browser} on ${os}`;
+}
+
 export function MarkAttendance() {
-  const { api, showToast } = useApp();
+  const { api, showToast, isOnline, offlineCount, isSyncing, syncOfflineNow, refreshOfflineCount } = useApp();
   const [step, setStep] = useState(STEPS.IDLE);
   const [activeExam, setActiveExam] = useState(null);
   const [assignedExams, setAssignedExams] = useState([]);
@@ -93,23 +393,83 @@ export function MarkAttendance() {
   const [manualAnswer, setManualAnswer] = useState('');
   const [scanning, setScanning] = useState(false);
   const [scanTarget, setScanTarget] = useState('');
+  const [isOfflineSaved, setIsOfflineSaved] = useState(false);
+  
+  // Mandatory Location & Device Info State
+  const [location, setLocation] = useState(null);
+  const [locationLoading, setLocationLoading] = useState(false);
+  const [locationError, setLocationError] = useState(null);
+  const [deviceInfo] = useState(() => getDeviceInfo());
+
   const videoRef = useRef(null);
   const canvasRef = useRef(null);
   const streamRef = useRef(null);
   const scanIntervalRef = useRef(null);
 
+  const requestLocation = useCallback(() => {
+    if (!navigator.geolocation) {
+      setLocationError('Geolocation is not supported by your browser.');
+      return;
+    }
+    setLocationLoading(true);
+    setLocationError(null);
+
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+        const accuracy = pos.coords.accuracy ? Math.round(pos.coords.accuracy) : null;
+        const formattedCoord = `${lat.toFixed(5)}°, ${lng.toFixed(5)}°`;
+
+        setLocation({
+          latitude: lat,
+          longitude: lng,
+          accuracy,
+          formattedCoord,
+        });
+        setLocationLoading(false);
+        setLocationError(null);
+      },
+      (err) => {
+        let msg = 'Please enable location permissions in your browser or device settings.';
+        if (err.code === 1) msg = 'Location permission was denied. Location is mandatory to mark attendance.';
+        else if (err.code === 2) msg = 'Location position unavailable. Please turn ON GPS / Location on your device.';
+        else if (err.code === 3) msg = 'Location request timed out. Please retry.';
+        setLocationError(msg);
+        setLocationLoading(false);
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 10000 }
+    );
+  }, []);
+
+  useEffect(() => {
+    requestLocation();
+  }, [requestLocation]);
+
   const loadCurrentExam = useCallback(() => {
     const localDate = new Date().toLocaleDateString('en-CA');
     const localTime = new Date().toTimeString().slice(0, 5);
-    api(`/attendance/current-exam?date=${localDate}&time=${localTime}`).then(d => {
-      const duties = d.assignedExams || [];
-      setAssignedExams(duties);
-      if (d.currentExam) {
-        setActiveExam(d.currentExam);
-      } else {
-        setActiveExam(null);
-      }
-    }).catch(() => {});
+    api(`/attendance/current-exam?date=${localDate}&time=${localTime}`)
+      .then(d => {
+        const duties = d.assignedExams || [];
+        setAssignedExams(duties);
+        if (d.currentExam) {
+          setActiveExam(d.currentExam);
+        } else {
+          setActiveExam(null);
+        }
+        cacheAssignedExams(d);
+      })
+      .catch(() => {
+        // Fallback to cached exams when offline
+        const cached = getCachedAssignedExams();
+        if (cached?.data) {
+          const duties = cached.data.assignedExams || [];
+          setAssignedExams(duties);
+          if (cached.data.currentExam) setActiveExam(cached.data.currentExam);
+          else if (duties.length > 0) setActiveExam(duties[0]);
+        }
+      });
   }, [api]);
 
   useEffect(() => {
@@ -124,6 +484,11 @@ export function MarkAttendance() {
 
   const startCamera = async (target) => {
     if (!activeExam) { showToast('Please select an active assigned exam first', 'error'); return; }
+    if (!location) {
+      showToast('📍 Location is mandatory! Please grant location permissions before marking attendance.', 'error');
+      requestLocation();
+      return;
+    }
     setScanTarget(target);
     setScanning(true);
     try {
@@ -160,9 +525,18 @@ export function MarkAttendance() {
 
   const handleVerifyAdmit = async (qr) => {
     if (!activeExam) { showToast('No active exam selected', 'error'); return; }
+    if (!location) {
+      showToast('📍 Location is mandatory! Please grant location access.', 'error');
+      requestLocation();
+      return;
+    }
     const cleanQr = typeof qr === 'string' ? qr.trim() : qr;
     setLoading(true); setStep(STEPS.SCAN_ADMIT);
+
     try {
+      if (!navigator.onLine) {
+        throw new Error('Offline');
+      }
       const res = await api('/attendance/verify-admit-qr', {
         method: 'POST',
         body: JSON.stringify({ qrAdmitScanned: cleanQr, examId: activeExam.exam_id })
@@ -175,7 +549,32 @@ export function MarkAttendance() {
         setErrMsg(res.message);
         setStep(STEPS.ERROR);
       }
-    } catch (e) { setErrMsg(e.message); setStep(STEPS.ERROR); }
+    } catch (e) {
+      // Offline fallback: match with cached roster or create offline student reference
+      const cachedRoster = getCachedExamRoster(activeExam.exam_id) || [];
+      const match = cachedRoster.find(
+        s => String(s.rollNo).trim().toLowerCase() === cleanQr.toLowerCase() ||
+             String(s.uniqueId).trim().toLowerCase() === cleanQr.toLowerCase() ||
+             String(s.studentId) === cleanQr
+      );
+
+      const resolvedStudent = {
+        studentName: match?.name || `Student (${cleanQr})`,
+        studentId: match?.uniqueId || cleanQr,
+        studentIdRef: match?.studentId || cleanQr,
+        class: match?.class || activeExam.class,
+        rollNo: match?.rollNo || cleanQr,
+        admitCardId: null,
+        examIdRef: activeExam.exam_id,
+        subject: activeExam.subject,
+        classroom: activeExam.classroom,
+        qrAdmitScanned: cleanQr,
+      };
+
+      setStudentInfo(resolvedStudent);
+      setStep(STEPS.SCAN_ANSWER);
+      showToast('📶 Student identified (Offline Mode)', 'info');
+    }
     setLoading(false);
   };
 
@@ -186,8 +585,40 @@ export function MarkAttendance() {
       showToast('Please enter or scan an answer sheet copy number', 'error');
       return;
     }
+
+    // 1. Check duplicate in offline queue
+    const queue = getOfflineQueue();
+    const dupInQueue = queue.find(
+      q => String(q.examIdRef) === String(studentInfo.examIdRef) &&
+           String(q.answerSheetNumber).trim().toLowerCase() === cleanQr.toLowerCase() &&
+           String(q.studentIdRef) !== String(studentInfo.studentIdRef)
+    );
+    if (dupInQueue) {
+      const msg = `❌ Duplicate Copy Number! Copy "${cleanQr}" is already queued for Roll No: ${dupInQueue.rollNo || '—'}`;
+      setErrMsg(msg);
+      showToast(msg, 'error');
+      return;
+    }
+
+    // 2. Check duplicate in local cached roster
+    const cachedRoster = getCachedExamRoster(studentInfo.examIdRef) || [];
+    const dupInRoster = cachedRoster.find(
+      r => r.answerSheetNumber &&
+           String(r.answerSheetNumber).trim().toLowerCase() === cleanQr.toLowerCase() &&
+           String(r.studentId) !== String(studentInfo.studentIdRef)
+    );
+    if (dupInRoster) {
+      const msg = `❌ Duplicate Copy Number! Copy No. "${cleanQr}" is already assigned to student (Roll No: ${dupInRoster.rollNo || '—'}).`;
+      setErrMsg(msg);
+      showToast(msg, 'error');
+      return;
+    }
+
     setLoading(true);
     try {
+      if (!navigator.onLine) {
+        throw new Error('Offline');
+      }
       const res = await api('/attendance/verify-answer-qr', {
         method: 'POST',
         body: JSON.stringify({
@@ -202,36 +633,101 @@ export function MarkAttendance() {
         setPreview(res.preview);
         setStep(STEPS.PREVIEW);
       } else {
-        setErrMsg(res.message);
-        showToast(res.message, 'error');
+        setErrMsg(res.message || 'Invalid copy number');
+        showToast(res.message || 'Invalid copy number', 'error');
       }
     } catch (e) {
-      setErrMsg(e.message);
-      showToast(e.message, 'error');
+      const msg = e.message || 'Error verifying copy number';
+      const isPureNetworkError = !navigator.onLine || msg === 'Offline' || msg === 'Failed to fetch' || msg.toLowerCase().includes('networkerror');
+
+      if (!isPureNetworkError) {
+        // Server returned a business/validation error (e.g. Duplicate Copy Number)
+        setErrMsg(msg);
+        showToast(msg, 'error');
+      } else {
+        // Legitimate offline fallback
+        setErrMsg('');
+        setPreview({
+          studentName: studentInfo.studentName,
+          studentId: studentInfo.studentId,
+          studentIdRef: studentInfo.studentIdRef,
+          rollNo: studentInfo.rollNo,
+          subject: studentInfo.subject,
+          classroom: studentInfo.classroom,
+          admitCardId: null,
+          examIdRef: studentInfo.examIdRef,
+          qrAdmitScanned: studentInfo.qrAdmitScanned,
+          qrAnswerScanned: cleanQr,
+          answerSheetNumber: cleanQr,
+        });
+        setStep(STEPS.PREVIEW);
+      }
     }
     setLoading(false);
   };
 
   const confirmMark = async () => {
     if (!preview) return;
+    if (!location) {
+      showToast('📍 Location is mandatory! Please turn on device location to complete marking attendance.', 'error');
+      requestLocation();
+      return;
+    }
     setLoading(true);
+
+    const payload = {
+      studentIdRef: preview.studentIdRef,
+      examIdRef: preview.examIdRef,
+      admitCardId: preview.admitCardId,
+      classroom: preview.classroom,
+      qrAdmitScanned: preview.qrAdmitScanned,
+      qrAnswerScanned: preview.qrAnswerScanned,
+      answerSheetNumber: preview.answerSheetNumber,
+      latitude: location.latitude,
+      longitude: location.longitude,
+      locationAddress: location.formattedCoord,
+      deviceInfo: deviceInfo,
+      studentName: preview.studentName,
+      rollNo: preview.rollNo,
+      markedAt: new Date().toISOString(),
+    };
+
+    if (!navigator.onLine) {
+      // Direct offline save
+      saveOfflineAttendance(payload);
+      refreshOfflineCount();
+      setIsOfflineSaved(true);
+      setStep(STEPS.SUCCESS);
+      showToast('💾 Saved locally! (Offline Mode - will auto-sync when online)', 'success');
+      setLoading(false);
+      return;
+    }
+
     try {
       await api('/attendance/mark', {
         method: 'POST',
-        body: JSON.stringify({
-          studentIdRef: preview.studentIdRef,
-          examIdRef: preview.examIdRef,
-          admitCardId: preview.admitCardId,
-          classroom: preview.classroom,
-          qrAdmitScanned: preview.qrAdmitScanned,
-          qrAnswerScanned: preview.qrAnswerScanned,
-          answerSheetNumber: preview.answerSheetNumber,
-        })
+        body: JSON.stringify(payload)
       });
+      setIsOfflineSaved(false);
       setStep(STEPS.SUCCESS);
-      showToast('✅ Attendance Marked!', 'success');
+      showToast('✅ Attendance Marked & Synced!', 'success');
     } catch (e) {
-      setErrMsg(e.message); setStep(STEPS.ERROR);
+      const msg = e.message || 'Attendance Marking Failed';
+      const isPureNetworkError = !navigator.onLine || msg === 'Failed to fetch' || msg.toLowerCase().includes('networkerror');
+
+      if (!isPureNetworkError) {
+        // Business / Validation error from server (e.g. duplicate copy number)
+        setErrMsg(msg);
+        setStep(STEPS.FAIL);
+        showToast(msg, 'error');
+      } else {
+        // Network drop or offline: save to offline queue as fallback
+        saveOfflineAttendance(payload);
+        refreshOfflineCount();
+        setIsOfflineSaved(true);
+        setStep(STEPS.SUCCESS);
+        showToast('💾 Connection offline — saved to offline queue! Will auto-sync when online.', 'info');
+      }
     }
     setLoading(false);
   };
@@ -244,6 +740,7 @@ export function MarkAttendance() {
     setErrMsg('');
     setManualAdmit('');
     setManualAnswer('');
+    setIsOfflineSaved(false);
   };
 
   // Camera UI (shown when scanning)
@@ -283,6 +780,7 @@ export function MarkAttendance() {
       <Toast />
       <PageHeader title="Mark Attendance" icon="📲" backPath="/teacher" />
       <div className="page-content" style={{ display:'flex', flexDirection:'column', gap:16 }}>
+        <NetworkSyncBadge />
 
         {/* Exam selector if assigned exams exist */}
         {assignedExams.length > 0 && (
@@ -301,95 +799,60 @@ export function MarkAttendance() {
               <option value="">-- {activeExam ? 'Switch Exam' : 'Select an Assigned Exam'} --</option>
               {assignedExams.map(ex => (
                 <option key={ex.exam_id} value={ex.exam_id}>
-                  {ex.subject} — {ex.class} ({ex.date} {ex.time || ''}) · Room {ex.classroom}
+                  {ex.subject} — {ex.class} ({ex.date} {ex.time || ''}) · 📍 Block: {ex.classroom}
                 </option>
               ))}
             </select>
           </div>
         )}
 
-        {/* Active exam banner */}
-        {activeExam ? (() => {
-          const localDate = new Date().toLocaleDateString('en-CA');
-          const nowMins = new Date().getHours() * 60 + new Date().getMinutes();
-          let isOngoing = false;
-          let isPast = false;
+        {/* Live Exam Timer & Banner */}
+        <LiveExamTimer currentExam={activeExam} />
 
-          if (activeExam.exam_status === 'Locked') {
-            return (
-              <div style={{ background:'#fef2f2', border:'2px solid #ef4444', borderRadius:12, padding:'14px 16px', textAlign:'center' }}>
-                <div style={{ fontSize:10, color:'#991b1b', fontWeight:700, textTransform:'uppercase', letterSpacing:.5 }}>🔒 Exam Locked</div>
-                <div style={{ fontSize:17, fontWeight:800, color:'#7f1d1d', marginTop:2 }}>{activeExam.subject} — {activeExam.class}</div>
-                <div style={{ fontSize:12, color:'#991b1b', marginTop:4, fontWeight:600 }}>
-                  📅 {activeExam.date} {activeExam.time ? `· ⏰ ${activeExam.time}` : ''} · 🏫 Room: {activeExam.classroom}
-                </div>
-                <div style={{ fontSize:11, color:'#b91c1c', marginTop:2 }}>Attendance marking is locked by the Board Admin.</div>
-              </div>
-            );
-          }
-
-          if (activeExam.date < localDate) {
-            isPast = true;
-          } else if (activeExam.date > localDate) {
-            isPast = false;
-          } else {
-            if (!activeExam.time) {
-              isOngoing = true;
-            } else {
-              const [h, m] = activeExam.time.split(':').map(Number);
-              const start = h * 60 + m;
-              const end = start + (Number(activeExam.duration) || 180);
-              if (nowMins > end + 30) isPast = true;
-              else if (nowMins >= start - 30) isOngoing = true;
-            }
-          }
-
-          if (isOngoing) {
-            return (
-              <div style={{ background:'#dcfce7', border:'2px solid #16a34a', borderRadius:12, padding:'14px 16px', textAlign:'center' }}>
-                <div style={{ fontSize:10, color:'#166534', fontWeight:700, textTransform:'uppercase', letterSpacing:.5 }}>Active Exam Duty Right Now</div>
-                <div style={{ fontSize:17, fontWeight:800, color:'#14532d', marginTop:2 }}>{activeExam.subject} — {activeExam.class}</div>
-                <div style={{ fontSize:12, color:'#166534', marginTop:4, fontWeight:600 }}>
-                  📅 {activeExam.date} {activeExam.time ? `· ⏰ ${activeExam.time}` : ''} · 🏫 Room: {activeExam.classroom}
-                </div>
-                {activeExam.center_name && (
-                  <div style={{ fontSize:11, color:'#15803d', marginTop:2 }}>📍 Center: {activeExam.center_name}</div>
-                )}
-              </div>
-            );
-          } else if (isPast) {
-            return (
-              <div style={{ background:'#fef2f2', border:'2px solid #ef4444', borderRadius:12, padding:'14px 16px', textAlign:'center' }}>
-                <div style={{ fontSize:10, color:'#991b1b', fontWeight:700, textTransform:'uppercase', letterSpacing:.5 }}>Exam Date/Time Ended</div>
-                <div style={{ fontSize:17, fontWeight:800, color:'#7f1d1d', marginTop:2 }}>{activeExam.subject} — {activeExam.class}</div>
-                <div style={{ fontSize:12, color:'#991b1b', marginTop:4, fontWeight:600 }}>
-                  📅 {activeExam.date} {activeExam.time ? `· ⏰ ${activeExam.time}` : ''} · 🏫 Room: {activeExam.classroom}
-                </div>
-                <div style={{ fontSize:11, color:'#b91c1c', marginTop:2 }}>⚠️ This exam's date/time has passed.</div>
-              </div>
-            );
-          } else {
-            return (
-              <div style={{ background:'#eff6ff', border:'2px solid #3b82f6', borderRadius:12, padding:'14px 16px', textAlign:'center' }}>
-                <div style={{ fontSize:10, color:'#1e40af', fontWeight:700, textTransform:'uppercase', letterSpacing:.5 }}>Upcoming Scheduled Exam</div>
-                <div style={{ fontSize:17, fontWeight:800, color:'#1e3a8a', marginTop:2 }}>{activeExam.subject} — {activeExam.class}</div>
-                <div style={{ fontSize:12, color:'#1e40af', marginTop:4, fontWeight:600 }}>
-                  📅 {activeExam.date} {activeExam.time ? `· ⏰ ${activeExam.time}` : ''} · 🏫 Room: {activeExam.classroom}
-                </div>
-                <div style={{ fontSize:11, color:'#2563eb', marginTop:2 }}>⏳ Exam is scheduled for a future time.</div>
-              </div>
-            );
-          }
-        })() : (
-          <div style={{ background:'#fef3c7', border:'2px solid #d97706', borderRadius:12, padding:'14px 16px', textAlign:'center' }}>
-            <div style={{ fontSize:13, color:'#92400e', fontWeight:800 }}>⚠️ No Active Exam Right Now</div>
-            <div style={{ fontSize:11, color:'#92400e', marginTop:4 }}>
-              {assignedExams.length > 0
-                ? 'You have assigned exam duties, but none are active at this current date & time.'
-                : 'No exam duties have been assigned to your account.'}
+        {/* Mandatory Location Status Banner */}
+        {locationLoading ? (
+          <div style={{ background: '#f8fafc', border: '1px dashed var(--gray-300)', borderRadius: 12, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span style={{ fontSize: 18, animation: 'spin 1s linear infinite' }}>⏳</span>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--gray-800)' }}>Acquiring Device Location (GPS)...</div>
+              <div style={{ fontSize: 10, color: 'var(--gray-500)' }}>Device location is mandatory for exam attendance tracking.</div>
             </div>
           </div>
-        )}
+        ) : locationError ? (
+          <div style={{ background: '#fef2f2', border: '2px solid #ef4444', borderRadius: 12, padding: '14px 16px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: '#991b1b', fontWeight: 800, fontSize: 13 }}>
+              <span>📍 Location Access Required</span>
+            </div>
+            <div style={{ fontSize: 11, color: '#b91c1c', marginTop: 4, lineHeight: 1.4 }}>
+              {locationError}
+            </div>
+            <button
+              className="btn btn-primary btn-sm"
+              style={{ marginTop: 10, background: '#dc2626', width: '100%' }}
+              onClick={requestLocation}
+            >
+              🔄 Allow / Turn On Location
+            </button>
+          </div>
+        ) : location ? (
+          <div style={{ background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 12, padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ fontSize: 14 }}>📍</span>
+                <span style={{ fontSize: 11, fontWeight: 800, color: '#166534' }}>Location Verified & Active</span>
+              </div>
+              <span style={{ fontSize: 10, background: '#dcfce7', color: '#166534', padding: '2px 8px', borderRadius: 6, fontWeight: 700 }}>
+                ±{location.accuracy}m GPS
+              </span>
+            </div>
+            <div style={{ fontSize: 11, color: '#15803d', fontFamily: 'monospace' }}>
+              Coordinates: {location.formattedCoord}
+            </div>
+            <div style={{ fontSize: 10, color: 'var(--gray-600)', borderTop: '1px dashed #bbf7d0', paddingTop: 4 }}>
+              📱 Device: <strong>{deviceInfo}</strong>
+            </div>
+          </div>
+        ) : null}
 
         {/* Instructions */}
         <div style={{ background:'#f0f4ff', borderRadius:12, padding:16 }}>
@@ -413,8 +876,8 @@ export function MarkAttendance() {
         {/* Start Scan */}
         <button className="btn btn-primary" style={{ padding:16, fontSize:15 }}
           onClick={() => { setStep(STEPS.SCAN_ADMIT); startCamera('admit'); }}
-          disabled={!activeExam || loading}>
-          {loading && step === STEPS.SCAN_ADMIT ? 'Verifying...' : '📷 Start Scanning'}
+          disabled={!activeExam || !location || loading}>
+          {loading && step === STEPS.SCAN_ADMIT ? 'Verifying...' : (!location ? '📍 Enable Location to Scan' : '📷 Start Scanning')}
         </button>
 
         {/* Manual entry fallback */}
@@ -422,7 +885,7 @@ export function MarkAttendance() {
           <summary style={{ fontSize:12, fontWeight:700, color:'var(--gray-600)', cursor:'pointer' }}>⌨️ Manual QR Entry (camera unavailable)</summary>
           <div style={{ marginTop:12, display:'flex', flexDirection:'column', gap:10 }}>
             <input className="input-field" placeholder="Admit Card QR value" value={manualAdmit} onChange={e=>setManualAdmit(e.target.value)} />
-            <button className="btn btn-primary btn-sm" onClick={()=>{ if(manualAdmit.trim()) handleVerifyAdmit(manualAdmit.trim()); }} disabled={!manualAdmit.trim()||loading}>
+            <button className="btn btn-primary btn-sm" onClick={()=>{ if(manualAdmit.trim()) handleVerifyAdmit(manualAdmit.trim()); }} disabled={!manualAdmit.trim()||!location||loading}>
               Verify Admit Card
             </button>
           </div>
@@ -501,6 +964,8 @@ export function MarkAttendance() {
             { label:'Subject', value: preview?.subject },
             { label:'Classroom', value: preview?.classroom },
             { label:'Answer Sheet No.', value: preview?.answerSheetNumber, highlight: true },
+            { label:'📍 Location GPS', value: location?.formattedCoord || 'Pending...' },
+            { label:'📱 Invigilator Device', value: deviceInfo },
           ].map(r => (
             <div key={r.label} style={{ display:'flex', justifyContent:'space-between', padding:'8px 0', borderBottom:'1px solid var(--gray-100)' }}>
               <span style={{ fontSize:12, color:'var(--gray-500)', fontWeight:600 }}>{r.label}</span>
@@ -509,7 +974,7 @@ export function MarkAttendance() {
           ))}
         </div>
 
-        <button className="btn btn-primary" style={{ padding:16, background:'#16a34a' }} onClick={confirmMark} disabled={loading}>
+        <button className="btn btn-primary" style={{ padding:16, background:'#16a34a' }} onClick={confirmMark} disabled={loading || !location}>
           {loading ? 'Marking…' : '✅ Confirm — Mark Present'}
         </button>
         <button className="btn btn-ghost" onClick={reset}>Cancel</button>
@@ -522,11 +987,18 @@ export function MarkAttendance() {
     <Page>
       <PageHeader title="Success!" icon="✅" onBack={reset} />
       <div className="page-content" style={{ display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', flex:1, gap:16, textAlign:'center' }}>
-        <div style={{ fontSize:72 }}>✅</div>
-        <div style={{ fontWeight:800, fontSize:20, color:'#16a34a' }}>Attendance Marked!</div>
-        <div style={{ background:'#dcfce7', borderRadius:12, padding:'12px 20px', width:'100%' }}>
-          <div style={{ fontWeight:700, fontSize:15, color:'#14532d' }}>{preview?.studentName}</div>
-          <div style={{ fontSize:12, color:'#166534', marginTop:4 }}>Copy No: <strong>{preview?.answerSheetNumber}</strong></div>
+        <div style={{ fontSize:72 }}>{isOfflineSaved ? '💾' : '✅'}</div>
+        <div style={{ fontWeight:800, fontSize:20, color: isOfflineSaved ? '#0a1f6b' : '#16a34a' }}>
+          {isOfflineSaved ? 'Saved to Offline Queue!' : 'Attendance Marked & Synced!'}
+        </div>
+        <div style={{ background: isOfflineSaved ? '#eff6ff' : '#dcfce7', border: `1px solid ${isOfflineSaved ? '#bfdbfe' : '#bbf7d0'}`, borderRadius:12, padding:'12px 20px', width:'100%' }}>
+          <div style={{ fontWeight:700, fontSize:15, color: isOfflineSaved ? '#1e3a8a' : '#14532d' }}>{preview?.studentName}</div>
+          <div style={{ fontSize:12, color: isOfflineSaved ? '#1d4ed8' : '#166534', marginTop:4 }}>Copy No: <strong>{preview?.answerSheetNumber}</strong></div>
+          {isOfflineSaved && (
+            <div style={{ fontSize:11, color:'#3b82f6', marginTop:6 }}>
+              📶 This record is stored locally on this device and will automatically sync to the school and board server when internet connection returns.
+            </div>
+          )}
         </div>
         <button className="btn btn-primary" style={{ width:'100%', padding:14 }} onClick={reset}>
           📷 Next Student
@@ -586,7 +1058,13 @@ export function AttendanceReport() {
       }).catch(() => {
         if (res.length > 0) setSelectedExamId(res[0].id);
       });
-    }).catch(() => {});
+    }).catch(() => {
+      const cached = getCachedAssignedExams();
+      if (cached?.data?.assignedExams) {
+        setExams(cached.data.assignedExams);
+        if (cached.data.currentExam) setSelectedExamId(cached.data.currentExam.exam_id);
+      }
+    });
   }, [api]);
 
   useEffect(() => {
@@ -595,12 +1073,52 @@ export function AttendanceReport() {
       setSelectedExam(null);
       return;
     }
-    const found = exams.find(e => String(e.id) === String(selectedExamId));
+    const found = exams.find(e => String(e.id || e.exam_id) === String(selectedExamId));
     setSelectedExam(found);
 
     api(`/attendance/roster?examId=${selectedExamId}`)
-      .then(setRoster)
-      .catch(() => setRoster([]));
+      .then(res => {
+        const offlineQueue = getOfflineQueue().filter(q => String(q.examIdRef) === String(selectedExamId));
+        const offlineMap = new Map(offlineQueue.map(q => [String(q.studentIdRef), q]));
+
+        const merged = res.map(s => {
+          const off = offlineMap.get(String(s.studentId));
+          if (off) {
+            return {
+              ...s,
+              status: 'Present',
+              answerSheetNumber: off.answerSheetNumber,
+              markedAt: off.markedAt,
+              isOfflineQueued: true
+            };
+          }
+          return s;
+        });
+
+        setRoster(merged);
+        cacheExamRoster(selectedExamId, res);
+      })
+      .catch(() => {
+        const cached = getCachedExamRoster(selectedExamId) || [];
+        const offlineQueue = getOfflineQueue().filter(q => String(q.examIdRef) === String(selectedExamId));
+        const offlineMap = new Map(offlineQueue.map(q => [String(q.studentIdRef), q]));
+
+        const merged = cached.map(s => {
+          const off = offlineMap.get(String(s.studentId));
+          if (off) {
+            return {
+              ...s,
+              status: 'Present',
+              answerSheetNumber: off.answerSheetNumber,
+              markedAt: off.markedAt,
+              isOfflineQueued: true
+            };
+          }
+          return s;
+        });
+
+        setRoster(merged);
+      });
   }, [api, selectedExamId, exams]);
 
   const printSheet = () => window.print();
@@ -656,7 +1174,7 @@ export function AttendanceReport() {
         ) : (
           <>
             <div style={{ fontWeight:700, fontSize:14, marginBottom:2 }}>{selectedExam.subject} — {selectedExam.class}</div>
-            <div style={{ fontSize:11, color:'#166534', marginBottom:4 }}>{selectedExam.date} · Room: {selectedExam.classroom || '—'}</div>
+            <div style={{ fontSize:11, color:'#166534', marginBottom:4 }}>{selectedExam.date} · 📍 Block: {selectedExam.classroom || '—'}</div>
             <div style={{ fontSize:11, fontWeight:700, color:'#16a34a', marginBottom:14 }}>
               Present: {presentCount} / {roster.length}
             </div>
@@ -799,12 +1317,12 @@ export function DutySlip() {
           <div style={{ fontSize:12, marginBottom:14 }}><strong>ID:</strong> {currentUser?.uniqueId}</div>
           <table style={{ width:'100%', borderCollapse:'collapse', fontSize:11 }}>
             <thead><tr style={{ background:'#0a1f6b', color:'#fff' }}>
-              <th style={{ padding:6, textAlign:'left' }}>Subject</th><th style={{ padding:6 }}>Class</th><th style={{ padding:6 }}>Date</th><th style={{ padding:6 }}>Time</th><th style={{ padding:6 }}>Room</th>
+              <th style={{ padding:6, textAlign:'left' }}>Subject</th><th style={{ padding:6 }}>Class</th><th style={{ padding:6 }}>Date</th><th style={{ padding:6 }}>Time</th><th style={{ padding:6 }}>Block</th>
             </tr></thead>
             <tbody>
               {exams.map(e=>(
                 <tr key={e._id} style={{ borderBottom:'1px solid var(--gray-100)' }}>
-                  <td style={{ padding:6 }}>{e.subject}</td><td style={{ padding:6 }}>{e.class}</td><td style={{ padding:6 }}>{e.date}</td><td style={{ padding:6 }}>{e.time||'—'}</td><td style={{ padding:6 }}>{e.classroom||'—'}</td>
+                  <td style={{ padding:6 }}>{e.subject}</td><td style={{ padding:6 }}>{e.class}</td><td style={{ padding:6 }}>{e.date}</td><td style={{ padding:6 }}>{e.time||'—'}</td><td style={{ padding:6, fontWeight:700, color:'#0a1f6b' }}>{e.classroom||'—'}</td>
                 </tr>
               ))}
             </tbody>

@@ -108,12 +108,14 @@ export function Login() {
           <p style={{ fontSize:12, color:'var(--gray-500)' }}>Sign in with credentials provided by your Admin</p>
         </div>
 
-        <input className="input-bare" type="text" placeholder="Username"
-          value={username} onChange={e => { setUsername(e.target.value); setError(''); }}
-          onKeyDown={e => e.key === 'Enter' && handleLogin()} />
+        <div className={`input-group ${error && !username.trim() ? 'has-error' : ''}`} style={{ margin:0 }}>
+          <input className={`input-bare ${error && !username.trim() ? 'input-error' : ''}`} type="text" placeholder="Username / School ID / Email"
+            value={username} onChange={e => { setUsername(e.target.value); setError(''); }}
+            onKeyDown={e => e.key === 'Enter' && handleLogin()} />
+        </div>
 
-        <div style={{ position:'relative' }}>
-          <input className="input-bare" type={showPw ? 'text' : 'password'} placeholder="Password"
+        <div className={`input-group ${error && !password ? 'has-error' : ''}`} style={{ position:'relative', margin:0 }}>
+          <input className={`input-bare ${error && !password ? 'input-error' : ''}`} type={showPw ? 'text' : 'password'} placeholder="Password (CNIC without dashes)"
             value={password} onChange={e => { setPassword(e.target.value); setError(''); }}
             style={{ paddingRight:48 }} onKeyDown={e => e.key === 'Enter' && handleLogin()} />
           <button onClick={() => setShowPw(!showPw)}
@@ -123,14 +125,14 @@ export function Login() {
         </div>
 
         {error && (
-          <div style={{ background:'var(--red-bg)', border:'1px solid #fecaca', borderRadius:10, padding:'10px 14px' }}>
-            <p style={{ fontSize:12, color:'var(--red)', margin:0 }}>⚠ {error}</p>
+          <div style={{ background:'var(--red-bg)', border:'1px solid #fecaca', borderRadius:10, padding:'10px 14px', animation:'shakeField 0.25s ease' }}>
+            <p style={{ fontSize:12, color:'var(--red)', margin:0, fontWeight:600 }}>⚠️ {error}</p>
           </div>
         )}
 
         <button className="btn btn-primary" onClick={handleLogin} disabled={loading}
-          style={{ marginTop:2, opacity:loading ? 0.7 : 1, padding:'13px 20px', fontSize:14 }}>
-          {loading ? 'Signing in…' : 'Sign In'}
+          style={{ marginTop:2, padding:'13px 20px', fontSize:14 }}>
+          {loading ? <><span className="btn-spinner" /> Signing in…</> : 'Sign In'}
         </button>
 
         <button onClick={() => navigate('/forgot-password')}
@@ -139,9 +141,9 @@ export function Login() {
         </button>
 
         <div style={{ background:'var(--blue-bg)', border:'1px solid #c7d7ff', borderRadius:12, padding:14 }}>
-          <p style={{ fontSize:11, fontWeight:700, color:'#0a1f6b', marginBottom:5 }}>ℹ Account Access</p>
+          <p style={{ fontSize:11, fontWeight:700, color:'#0a1f6b', marginBottom:5 }}>ℹ School & Staff Access</p>
           <p style={{ fontSize:11, color:'var(--gray-600)', lineHeight:1.6, margin:0 }}>
-            Accounts are created by the <strong>Board Administrator</strong>. Contact your Admin to receive login credentials.
+            Schools log in using their assigned <strong>Username / School ID</strong> and the Principal's <strong>CNIC (13 digits without dashes)</strong> as password.
           </p>
         </div>
 
