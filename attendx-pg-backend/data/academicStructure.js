@@ -50,11 +50,12 @@ function subjectsForDepartment(department) {
   return SUBJECTS[department] || [];
 }
 
-// The only valid class values in the new structure — replaces the old free-text
-// "class" field (6th, 10, etc.) entirely.
+// The valid class values in the academic structure — supporting SSC (Grade 9 & 10)
+// and HSSC (Grade 11 & 12 / Intermediate Colleges).
 const CLASSES = [
-  'SSC-I', 'SSC-II', 'HSC-I', 'HSC-II',
+  'SSC-I', 'SSC-II', 'HSSC-I', 'HSSC-II', 'HSC-I', 'HSC-II',
   'SSC-I Supplementary', 'SSC-II Supplementary',
+  'HSSC-I Supplementary', 'HSSC-II Supplementary',
   'HSC-I Supplementary', 'HSC-II Supplementary',
 ];
 

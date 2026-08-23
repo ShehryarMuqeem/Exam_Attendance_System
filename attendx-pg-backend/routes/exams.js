@@ -344,7 +344,25 @@ router.get('/:id/roster', protect, requireRole('SchoolAdmin','BoardAdmin'), asyn
       'SELECT home_school_id FROM center_assignments WHERE center_school_id=$1',
       [exam.center_id]
     );
-    const schoolIds = Array.from(new Set([exam.center_id, ...homeSchools.map(h => h.home_school_id)]));
+
+    // Check if the center school itself has been assigned to sit at another school (90% case)
+    const { rows: centerHomeRecord } = await pool.query(
+      'SELECT center_school_id FROM center_assignments WHERE home_school_id=$1',
+      [exam.center_id]
+    );
+
+    const schoolIdsSet = new Set(homeSchools.map(h => h.home_school_id));
+    if (centerHomeRecord.length > 0) {
+      if (centerHomeRecord[0].center_school_id === exam.center_id) {
+        schoolIdsSet.add(exam.center_id); // Explicit self-center (10% case)
+      } else {
+        schoolIdsSet.delete(exam.center_id); // Sent to another school (90% case)
+      }
+    } else {
+      // Center school is not assigned elsewhere: by default its own students sit here
+      schoolIdsSet.add(exam.center_id);
+    }
+    const schoolIds = Array.from(schoolIdsSet);
 
     // Fetch all students matching exam class & school list & academic year
     const { rows: students } = await pool.query(

@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from
 import { AppProvider, useApp } from './context/AppContext';
 
 import { Splash, Login, ForgotPassword } from './pages/AuthPages';
-import { AdminDashboard, SchoolManagement, AddSchool, UserManagement, AddUser, EditUser, ExamManagement, CreateExam, CenterManagement, AttendanceOverview, BatchManagement, PasswordResetRequests } from './pages/AdminPages';
+import { AdminDashboard, SchoolManagement, AddSchool, UserManagement, AddUser, EditUser, ExamManagement, CreateExam, CenterManagement, AttendanceOverview, BatchManagement, PasswordResetRequests, AdminChangePassword } from './pages/AdminPages';
 import { SchoolDashboard, SchoolStudents, AddSchoolStudent, SchoolTeachers, AddSchoolTeacher, SchoolAssignDuty, SchoolCenterDetails } from './pages/SchoolPages';
 import { TeacherDashboard, MarkAttendance, AttendanceReport, AbsentReport, DutySlip } from './pages/TeacherPages';
 import { StudentDashboard } from './pages/StudentPages';
@@ -12,14 +12,15 @@ import { AnalyticsDashboard } from './pages/AnalyticsPage';
 // ===== NAV CONFIG =====
 const NAV_LINKS = {
   BoardAdmin: [
-    { path:'/admin',                   icon:'🏠', label:'Home'      },
-    { path:'/admin/schools',           icon:'🏫', label:'Schools'   },
-    { path:'/admin/exams',             icon:'📋', label:'Exams'     },
-    { path:'/admin/batches',           icon:'📅', label:'Batches'   },
-    { path:'/admin/users',             icon:'👥', label:'Users'     },
-    { path:'/admin/password-requests', icon:'🔐', label:'Resets'    },
-    { path:'/admin/centers',           icon:'📍', label:'Centers'   },
-    { path:'/admin/analytics',         icon:'📊', label:'Analytics' },
+    { path:'/admin',                   icon:'🏠', label:'Home'               },
+    { path:'/admin/schools',           icon:'🏫', label:'Schools & Colleges' },
+    { path:'/admin/exams',             icon:'📋', label:'Exams'              },
+    { path:'/admin/batches',           icon:'📅', label:'Batches'            },
+    { path:'/admin/users',             icon:'👥', label:'Users'              },
+    { path:'/admin/password-requests', icon:'🔐', label:'Resets'             },
+    { path:'/admin/centers',           icon:'📍', label:'Centers'            },
+    { path:'/admin/analytics',         icon:'📊', label:'Analytics'          },
+    { path:'/admin/change-password',   icon:'🔑', label:'Password'           },
   ],
   SchoolAdmin: [
     { path:'/school',            icon:'🏠', label:'Home'     },
@@ -79,6 +80,12 @@ function DesktopTopBar() {
           color:'#fff', fontWeight:800, fontSize:13, fontFamily:'Poppins,sans-serif',
           flexShrink:0
         }}>{initials}</div>
+        {currentUser.role === 'BoardAdmin' && (
+          <button onClick={() => navigate('/admin/change-password')}
+            style={{ background:'rgba(255,255,255,.15)', border:'1px solid rgba(255,255,255,.3)', color:'#fff', borderRadius:8, padding:'5px 12px', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'Poppins,sans-serif', display:'flex', alignItems:'center', gap:4 }}>
+            🔑 Password
+          </button>
+        )}
         <button onClick={() => { logout(); navigate('/login'); }}
           style={{ background:'rgba(255,255,255,.15)', border:'1px solid rgba(255,255,255,.3)', color:'#fff', borderRadius:8, padding:'5px 12px', fontSize:11, fontWeight:700, cursor:'pointer', fontFamily:'Poppins,sans-serif' }}>
           Sign Out
@@ -113,7 +120,7 @@ function DesktopSidebar() {
       {/* School / user context */}
       {currentUser.schoolName && (
         <div style={{ padding:'10px 12px 12px', borderBottom:'1px solid #f1f5f9', marginBottom:8 }}>
-          <div style={{ fontSize:10, color:'#94a3b8', fontWeight:700, textTransform:'uppercase', letterSpacing:.4 }}>School</div>
+          <div style={{ fontSize:10, color:'#94a3b8', fontWeight:700, textTransform:'uppercase', letterSpacing:.4 }}>School / College</div>
           <div style={{ fontSize:12, fontWeight:700, color:'#0a1f6b', marginTop:2, lineHeight:1.3 }}>{currentUser.schoolName}</div>
         </div>
       )}
@@ -265,6 +272,7 @@ function AppRoutes() {
         <Route path="/admin/centers"          element={<ProtectedRoute requiredRole="BoardAdmin"><CenterManagement /></ProtectedRoute>} />
         <Route path="/admin/attendance"       element={<ProtectedRoute requiredRole="BoardAdmin"><AttendanceOverview /></ProtectedRoute>} />
         <Route path="/admin/analytics"        element={<ProtectedRoute requiredRole="BoardAdmin"><AnalyticsDashboard /></ProtectedRoute>} />
+        <Route path="/admin/change-password"  element={<ProtectedRoute requiredRole="BoardAdmin"><AdminChangePassword /></ProtectedRoute>} />
 
         {/* School Admin */}
         <Route path="/school"                 element={<ProtectedRoute requiredRole="SchoolAdmin"><SchoolDashboard /></ProtectedRoute>} />

@@ -117,6 +117,35 @@ router.get('/me', protect, async (req, res) => {
   });
 });
 
+// POST change password for logged-in user (BoardAdmin, SchoolAdmin, Teacher, etc.)
+router.post('/change-password', protect, async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: 'Current password and new password are required.' });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ message: 'New password must be at least 6 characters long.' });
+    }
+
+    // Get user password hash from DB
+    const { rows } = await pool.query('SELECT id, password FROM users WHERE id = $1', [req.user.id]);
+    if (!rows[0]) return res.status(404).json({ message: 'User not found.' });
+
+    const isMatch = await bcrypt.compare(currentPassword, rows[0].password);
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Current password is incorrect.' });
+    }
+
+    const hashed = await bcrypt.hash(newPassword, 10);
+    await pool.query('UPDATE users SET password = $1, plain_password = $2 WHERE id = $3', [hashed, newPassword, req.user.id]);
+
+    res.json({ success: true, message: 'Password updated successfully! ✓' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // POST public forgot-password request
 router.post('/forgot-password', async (req, res) => {
   try {
