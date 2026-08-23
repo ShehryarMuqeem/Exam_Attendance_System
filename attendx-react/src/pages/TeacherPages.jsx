@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { AmsHeader, PageHeader, BottomNav, Toast, Page } from '../components/Shared';
+import { formatClassLabel } from './SchoolPages';
 import {
   cacheAssignedExams,
   getCachedAssignedExams,
@@ -228,7 +229,7 @@ export function LiveExamTimer({ currentExam, compact = false }) {
             {currentExam.subject}
           </div>
           <div style={{ fontSize: 12, color: 'var(--gray-600)', marginTop: 2, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            <span>Class: <strong>{currentExam.class || 'SSC'}</strong></span>
+            <span>Class: <strong>{formatClassLabel(currentExam.class)}</strong></span>
             <span>· Scheduled: <strong>{examTimeStr}</strong> ({durationMins} mins)</span>
           </div>
         </div>
@@ -799,7 +800,7 @@ export function MarkAttendance() {
               <option value="">-- {activeExam ? 'Switch Exam' : 'Select an Assigned Exam'} --</option>
               {assignedExams.map(ex => (
                 <option key={ex.exam_id} value={ex.exam_id}>
-                  {ex.subject} — {ex.class} ({ex.date} {ex.time || ''}) · 📍 Block: {ex.classroom}
+                  {ex.subject} — {formatClassLabel(ex.class)} ({ex.date} {ex.time || ''}) · 📍 Block: {ex.classroom}
                 </option>
               ))}
             </select>
@@ -1164,7 +1165,7 @@ export function AttendanceReport() {
             <label style={{ fontSize:11, fontWeight:700, color:'var(--gray-600)' }}>Select Exam</label>
             <select className="input-field" style={{ marginTop:4 }} value={selectedExamId} onChange={e => setSelectedExamId(e.target.value)}>
               <option value="">-- Select Exam --</option>
-              {exams.map(e => <option key={e.id} value={e.id}>{e.subject} — {e.class} ({e.date})</option>)}
+              {exams.map(e => <option key={e.id} value={e.id}>{e.subject} — {formatClassLabel(e.class)} ({e.date})</option>)}
             </select>
           </div>
         </div>
@@ -1173,7 +1174,7 @@ export function AttendanceReport() {
           <div style={{ textAlign:'center', color:'var(--gray-400)', padding:40 }}>Please select an exam to view sheet.</div>
         ) : (
           <>
-            <div style={{ fontWeight:700, fontSize:14, marginBottom:2 }}>{selectedExam.subject} — {selectedExam.class}</div>
+            <div style={{ fontWeight:700, fontSize:14, marginBottom:2 }}>{selectedExam.subject} — {formatClassLabel(selectedExam.class)}</div>
             <div style={{ fontSize:11, color:'#166534', marginBottom:4 }}>{selectedExam.date} · 📍 Block: {selectedExam.classroom || '—'}</div>
             <div style={{ fontSize:11, fontWeight:700, color:'#16a34a', marginBottom:14 }}>
               Present: {presentCount} / {roster.length}
@@ -1271,7 +1272,7 @@ export function AbsentReport() {
             <label style={{ fontSize:11, fontWeight:700, color:'var(--gray-600)' }}>Select Exam</label>
             <select className="input-field" style={{ marginTop:4 }} value={selectedExamId} onChange={e => setSelectedExamId(e.target.value)}>
               <option value="">-- Select Exam --</option>
-              {exams.map(e => <option key={e.id} value={e.id}>{e.subject} — {e.class} ({e.date})</option>)}
+              {exams.map(e => <option key={e.id} value={e.id}>{e.subject} — {formatClassLabel(e.class)} ({e.date})</option>)}
             </select>
           </div>
         </div>
@@ -1280,7 +1281,7 @@ export function AbsentReport() {
           <div style={{ textAlign:'center', color:'var(--gray-400)', padding:40 }}>Please select an exam to view absent report.</div>
         ) : (
           <>
-            <div style={{ fontWeight:700, fontSize:14, marginBottom:4 }}>{selectedExam.subject} — {selectedExam.class}</div>
+            <div style={{ fontWeight:700, fontSize:14, marginBottom:4 }}>{selectedExam.subject} — {formatClassLabel(selectedExam.class)}</div>
             <div style={{ fontSize:11, color:'var(--gray-500)', marginBottom:14 }}>{absentList.length} students absent</div>
             <div className="wide-grid">
               {absentList.map(s=>(

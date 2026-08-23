@@ -55,11 +55,22 @@ export function SchoolDashboard() {
               {centerInfo.isCenter && <span className="center-badge">Active Center</span>}
             </div>
             {!centerInfo.isCenter ? (
-              <div style={{ fontSize:12, color:'var(--gray-500)' }}>Your school is not currently assigned as an examination center for other schools. You only manage your own {centerInfo.ownStudents} students.</div>
+              <div style={{ fontSize:12, color:'var(--gray-500)' }}>
+                Your school is not currently assigned as an examination center for other schools.
+                {centerInfo.externalCenter && (
+                  <div style={{ marginTop:6, color:'#1d4ed8', fontWeight:600 }}>
+                    📍 Your students sit exams at external center: <strong>{centerInfo.externalCenter.name}</strong> ({centerInfo.externalCenter.schoolCode})
+                  </div>
+                )}
+              </div>
             ) : (
               <>
                 <div style={{ fontSize:12, color:'var(--gray-600)', marginBottom:8 }}>
-                  Your school is hosting exams for <strong>{centerInfo.assignedSchools.length}</strong> other school(s), bringing in <strong>{centerInfo.totalIncomingStudents}</strong> additional students (plus your own {centerInfo.ownStudents}).
+                  {centerInfo.isSelfCenter ? (
+                    <>Your school is a <strong>Self-Center</strong> hosting its own <strong>{centerInfo.ownStudentsAtThisCenter}</strong> students{centerInfo.assignedSchools.length > 0 ? ` plus ${centerInfo.totalIncomingStudents} incoming candidates from ${centerInfo.assignedSchools.length} other school(s)` : ''} (Total: <strong>{centerInfo.totalCenterCandidates}</strong> candidates).</>
+                  ) : (
+                    <>Your school is hosting exams for <strong>{centerInfo.assignedSchools.length}</strong> external school(s) with <strong>{centerInfo.totalCenterCandidates}</strong> candidates sitting exams here.{centerInfo.externalCenter && <span> Your own {centerInfo.ownStudentsTotal} students sit exams at <strong>{centerInfo.externalCenter.name}</strong>.</span>}</>
+                  )}
                 </div>
                 {centerInfo.assignedSchools.map(s=>(
                   <div key={s.id} style={{ display:'flex', justifyContent:'space-between', padding:'6px 0', borderTop:'1px solid var(--gray-100)', fontSize:12 }}>
@@ -104,26 +115,28 @@ export function SchoolDashboard() {
   );
 }
 
-// Helper to display class clearly as Class 9 or Class 10
-const formatClassLabel = (cls) => {
+// Helper to display class clearly as Class 9, 10, 11, or 12
+export const formatClassLabel = (cls) => {
   if (!cls) return 'Class 9 (SSC-I)';
   const c = String(cls).trim().toUpperCase();
   if (c === 'SSC-I' || c === '9' || c === '9TH' || c === 'CLASS 9' || c === 'CLASS 9TH' || c === 'SSC1') return 'Class 9 (SSC-I)';
   if (c === 'SSC-II' || c === '10' || c === '10TH' || c === 'CLASS 10' || c === 'CLASS 10TH' || c === 'SSC2') return 'Class 10 (SSC-II)';
   if (c.includes('SSC-I') && (c.includes('SUPP') || c.includes('SUPPLEMENTARY'))) return 'Class 9 (SSC-I Supp.)';
   if (c.includes('SSC-II') && (c.includes('SUPP') || c.includes('SUPPLEMENTARY'))) return 'Class 10 (SSC-II Supp.)';
-  if (c === 'HSC-I' || c === '11' || c === '11TH' || c === 'CLASS 11' || c === 'HSC1') return 'Class 11 (HSC-I)';
-  if (c === 'HSC-II' || c === '12' || c === '12TH' || c === 'CLASS 12' || c === 'HSC2') return 'Class 12 (HSC-II)';
+  if (c === 'HSSC-I' || c === 'HSC-I' || c === '11' || c === '11TH' || c === 'CLASS 11' || c === 'CLASS 11TH' || c === 'HSC1' || c === 'HSSC1' || c === '1ST YEAR' || c === 'FIRST YEAR') return 'Class 11 (HSSC-I / 1st Year)';
+  if (c === 'HSSC-II' || c === 'HSC-II' || c === '12' || c === '12TH' || c === 'CLASS 12' || c === 'CLASS 12TH' || c === 'HSC2' || c === 'HSSC2' || c === '2ND YEAR' || c === 'SECOND YEAR') return 'Class 12 (HSSC-II / 2nd Year)';
+  if ((c.includes('HSC-I') || c.includes('HSSC-I')) && (c.includes('SUPP') || c.includes('SUPPLEMENTARY'))) return 'Class 11 (HSSC-I Supp.)';
+  if ((c.includes('HSC-II') || c.includes('HSSC-II')) && (c.includes('SUPP') || c.includes('SUPPLEMENTARY'))) return 'Class 12 (HSSC-II Supp.)';
   return cls;
 };
 
-const normalizeClassInput = (cls) => {
+export const normalizeClassInput = (cls) => {
   if (!cls) return 'SSC-I';
   const c = String(cls).trim().toUpperCase();
   if (c === '9' || c === '9TH' || c === 'CLASS 9' || c === 'CLASS 9TH' || c === 'SSC-I' || c === 'SSC1') return 'SSC-I';
   if (c === '10' || c === '10TH' || c === 'CLASS 10' || c === 'CLASS 10TH' || c === 'SSC-II' || c === 'SSC2') return 'SSC-II';
-  if (c === '11' || c === '11TH' || c === 'CLASS 11' || c === 'HSC-I' || c === 'HSC1') return 'HSC-I';
-  if (c === '12' || c === '12TH' || c === 'CLASS 12' || c === 'HSC-II' || c === 'HSC2') return 'HSC-II';
+  if (c === '11' || c === '11TH' || c === 'CLASS 11' || c === 'CLASS 11TH' || c === 'HSC-I' || c === 'HSSC-I' || c === 'HSC1' || c === 'HSSC1' || c === '1ST YEAR' || c === 'FIRST YEAR') return 'HSSC-I';
+  if (c === '12' || c === '12TH' || c === 'CLASS 12' || c === 'CLASS 12TH' || c === 'HSC-II' || c === 'HSSC-II' || c === 'HSC2' || c === 'HSSC2' || c === '2ND YEAR' || c === 'SECOND YEAR') return 'HSSC-II';
   return cls;
 };
 
@@ -133,6 +146,7 @@ export function SchoolStudents() {
   const [students, setStudents] = useState([]);
   const [search, setSearch] = useState('');
   const [yearFilter, setYearFilter] = useState('');
+  const [classFilter, setClassFilter] = useState('');
   const [editingStudentId, setEditingStudentId] = useState(null);
   const [editForm, setEditForm] = useState({ rollNo: '', academicYear: '', class: '' });
   const [uploadClass, setUploadClass] = useState('SSC-I');
@@ -170,14 +184,18 @@ export function SchoolStudents() {
 
   useEffect(() => { load(); }, [load]);
 
-  const filtered = students.filter(s =>
-    !search ||
-    (s.uniqueId && s.uniqueId.toLowerCase().includes(search.toLowerCase())) ||
-    (s.rollNo && s.rollNo.toLowerCase().includes(search.toLowerCase())) ||
-    (s.schoolCode && s.schoolCode.toLowerCase().includes(search.toLowerCase())) ||
-    (s.class && s.class.toLowerCase().includes(search.toLowerCase())) ||
-    (s.academicYear && s.academicYear.toLowerCase().includes(search.toLowerCase()))
-  );
+  const filtered = students.filter(s => {
+    if (classFilter && normalizeClassInput(s.class) !== normalizeClassInput(classFilter)) return false;
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      (s.uniqueId && s.uniqueId.toLowerCase().includes(q)) ||
+      (s.rollNo && s.rollNo.toLowerCase().includes(q)) ||
+      (s.schoolCode && s.schoolCode.toLowerCase().includes(q)) ||
+      (s.class && s.class.toLowerCase().includes(q)) ||
+      (s.academicYear && s.academicYear.toLowerCase().includes(q))
+    );
+  });
 
   const parseCSVText = (text) => {
     const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
@@ -431,7 +449,7 @@ export function SchoolStudents() {
       <div className="page-content">
         <div style={{ background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:10, padding:'10px 14px', marginBottom:14, fontSize:12, color:'#166534', fontWeight:600, display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:10 }}>
           <div>
-            🎓 Manage student roll numbers, classes (Class 9 / 10), and batches.
+            🎓 Manage student roll numbers, classes (Grade 9, 10, 11, 12 / Matric & Inter), and academic batches.
           </div>
           <button className="btn btn-primary btn-sm" style={{ padding:'7px 14px', fontSize:12 }} onClick={() => navigate('/school/students/add')}>
             + Add Student
@@ -445,7 +463,7 @@ export function SchoolStudents() {
               <div style={{ fontWeight:800, fontSize:14, color:'#0a1f6b' }}>📥 Import Students (Excel / CSV)</div>
               <div style={{ fontSize:11, color:'var(--gray-500)', marginTop:2 }}>
                 Upload a 2-column CSV file: <strong>sr_no, roll_no</strong> (or just <strong>roll_no</strong>).<br />
-                Class, Batch, and School Code are automatically assigned from your selections below.
+                Target Class, Batch, and School Code are automatically assigned from your selections below.
               </div>
             </div>
             <button className="btn btn-ghost btn-sm" style={{ background:'#f0f4ff', color:'#0a1f6b', fontWeight:700, border:'1px solid #c7d2fe' }} onClick={downloadSampleCSV}>
@@ -459,12 +477,14 @@ export function SchoolStudents() {
                 Target Class for New Students <span className="req-star">*</span>
               </label>
               <select className="input-field" style={{ padding:8, fontSize:13 }} value={uploadClass} onChange={e=>setUploadClass(e.target.value)}>
-                <option value="SSC-I">Class 9 (SSC-I)</option>
-                <option value="SSC-II">Class 10 (SSC-II)</option>
+                <option value="SSC-I">Class 9 (SSC-I / Matric Part 1)</option>
+                <option value="SSC-II">Class 10 (SSC-II / Matric Part 2)</option>
+                <option value="HSSC-I">Class 11 (HSSC-I / 1st Year / Inter Part 1)</option>
+                <option value="HSSC-II">Class 12 (HSSC-II / 2nd Year / Inter Part 2)</option>
                 <option value="SSC-I Supplementary">Class 9 Supplementary</option>
                 <option value="SSC-II Supplementary">Class 10 Supplementary</option>
-                <option value="HSC-I">Class 11 (HSC-I)</option>
-                <option value="HSC-II">Class 12 (HSC-II)</option>
+                <option value="HSSC-I Supplementary">Class 11 Supplementary</option>
+                <option value="HSSC-II Supplementary">Class 12 Supplementary</option>
               </select>
             </div>
             <div className={`input-group ${!uploadBatch ? 'has-error' : ''}`} style={{ margin:0 }}>
@@ -496,17 +516,31 @@ export function SchoolStudents() {
           </div>
         </div>
 
-        <div style={{ display:'flex', gap:10, marginBottom:12 }}>
-          <div style={{ flex:1 }}><SearchBar value={search} onChange={setSearch} /></div>
+        <div style={{ display:'flex', gap:10, marginBottom:12, flexWrap:'wrap' }}>
+          <div style={{ flex:1, minWidth:200 }}><SearchBar value={search} onChange={setSearch} placeholder="Search student by roll no, unique ID, name..." /></div>
+          <select className="input-field" style={{ width:180, fontWeight:600 }} value={classFilter} onChange={e=>setClassFilter(e.target.value)}>
+            <option value="">All Classes / Grades</option>
+            <option value="SSC-I">Class 9 (SSC-I)</option>
+            <option value="SSC-II">Class 10 (SSC-II)</option>
+            <option value="HSSC-I">Class 11 (HSSC-I / 1st Year)</option>
+            <option value="HSSC-II">Class 12 (HSSC-II / 2nd Year)</option>
+            <option value="SSC-I Supplementary">Class 9 Supplementary</option>
+            <option value="SSC-II Supplementary">Class 10 Supplementary</option>
+            <option value="HSSC-I Supplementary">Class 11 Supplementary</option>
+            <option value="HSSC-II Supplementary">Class 12 Supplementary</option>
+          </select>
           <select className="input-field" style={{ width:160, fontWeight:600 }} value={yearFilter} onChange={e=>setYearFilter(e.target.value)}>
             <option value="">All Batches</option>
             {(batchOptions.length > 0 ? batchOptions : ['2025-2026', '2026-2027', '2027-2028']).map(y => <option key={y} value={y}>{y}</option>)}
           </select>
         </div>
 
-        <div style={{ fontSize:11, color:'var(--gray-500)', marginBottom:10, fontWeight:600, display:'flex', justifyContent:'space-between' }}>
+        <div style={{ fontSize:11, color:'var(--gray-500)', marginBottom:10, fontWeight:600, display:'flex', justifyContent:'space-between', flexWrap:'wrap', gap:6 }}>
           <span>{filtered.length} student{filtered.length !== 1 ? 's' : ''} listed</span>
-          {yearFilter && <span style={{ color:'#2563eb' }}>Filtered by Batch: <strong>{yearFilter}</strong></span>}
+          <div style={{ display:'flex', gap:10 }}>
+            {classFilter && <span style={{ color:'#16a34a' }}>Class: <strong>{formatClassLabel(classFilter)}</strong></span>}
+            {yearFilter && <span style={{ color:'#2563eb' }}>Batch: <strong>{yearFilter}</strong></span>}
+          </div>
         </div>
 
         <div className="wide-grid">
@@ -531,10 +565,12 @@ export function SchoolStudents() {
                         <select className="input-field" value={editForm.class} onChange={e=>setEditForm(f=>({...f, class:e.target.value}))}>
                           <option value="SSC-I">Class 9 (SSC-I)</option>
                           <option value="SSC-II">Class 10 (SSC-II)</option>
+                          <option value="HSSC-I">Class 11 (HSSC-I / 1st Year)</option>
+                          <option value="HSSC-II">Class 12 (HSSC-II / 2nd Year)</option>
                           <option value="SSC-I Supplementary">Class 9 Supplementary</option>
                           <option value="SSC-II Supplementary">Class 10 Supplementary</option>
-                          <option value="HSC-I">Class 11 (HSC-I)</option>
-                          <option value="HSC-II">Class 12 (HSC-II)</option>
+                          <option value="HSSC-I Supplementary">Class 11 Supplementary</option>
+                          <option value="HSSC-II Supplementary">Class 12 Supplementary</option>
                         </select>
                       </div>
                     </div>
@@ -1622,10 +1658,10 @@ export function SchoolCenterDetails() {
 
   const downloadCSVReport = () => {
     if (!centerInfo) return;
-    const headers = ['School Name', 'School Code', 'Student Count', 'Center Allocation Status'];
+    const headers = ['School Name', 'School Code', 'Candidate Count', 'Center Allocation Status'];
     const rows = [
       headers.join(','),
-      `"${currentUser?.schoolName || 'Own School'}", "OWN-CENTER", ${centerInfo.ownStudents}, "Host Center School"`,
+      ...(centerInfo.isSelfCenter ? [`"${currentUser?.schoolName || 'Own School'}", "SELF-HOST", ${centerInfo.ownStudentsAtThisCenter}, "Own School (Self-Center)"`] : []),
       ...centerInfo.assignedSchools.map(s => [
         `"${s.name}"`,
         `"${s.schoolCode}"`,
@@ -1657,10 +1693,12 @@ export function SchoolCenterDetails() {
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <div style={{ fontSize: 32 }}>{centerInfo.isCenter ? '📍' : '🏫'}</div>
                   <div>
-                    <div style={{ fontWeight: 800, fontSize: 16, color: '#0a1f6b' }}>{centerInfo.isCenter ? 'Active Examination Center' : 'Not an Assigned Center'}</div>
+                    <div style={{ fontWeight: 800, fontSize: 16, color: '#0a1f6b' }}>
+                      {centerInfo.isCenter ? 'Active Examination Center' : 'Not an Assigned Center'}
+                    </div>
                     <div style={{ fontSize: 11, color: 'var(--gray-500)', marginTop: 2 }}>
                       {centerInfo.isCenter
-                        ? `Hosting ${centerInfo.assignedSchools.length} home school(s), bringing in ${centerInfo.totalIncomingStudents} incoming candidates.`
+                        ? `Hosting ${centerInfo.assignedSchools.length} home school(s), with ${centerInfo.totalCenterCandidates} total candidates sitting exams here.`
                         : 'Your school only manages its own candidates.'}
                     </div>
                   </div>
@@ -1684,19 +1722,30 @@ export function SchoolCenterDetails() {
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginBottom: 16 }}>
-                <div style={{ background: '#f8fafc', padding: 12, borderRadius: 10, border: '1px solid #e2e8f0' }}>
-                  <div style={{ fontSize: 10, color: 'var(--gray-500)', fontWeight: 700, textTransform: 'uppercase' }}>Own School Students</div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: '#0a1f6b', marginTop: 2 }}>{centerInfo.ownStudents}</div>
-                </div>
                 <div style={{ background: '#f0f4ff', padding: 12, borderRadius: 10, border: '1px solid #c7d2fe' }}>
-                  <div style={{ fontSize: 10, color: '#1e40af', fontWeight: 700, textTransform: 'uppercase' }}>Incoming Home Students</div>
+                  <div style={{ fontSize: 10, color: '#1e40af', fontWeight: 700, textTransform: 'uppercase' }}>Incoming Candidates</div>
                   <div style={{ fontSize: 20, fontWeight: 800, color: '#1d4ed8', marginTop: 2 }}>{centerInfo.totalIncomingStudents}</div>
+                  <div style={{ fontSize: 10, color: 'var(--gray-500)', marginTop: 2 }}>From {centerInfo.assignedSchools.length} assigned school(s)</div>
+                </div>
+                <div style={{ background: '#f8fafc', padding: 12, borderRadius: 10, border: '1px solid #e2e8f0' }}>
+                  <div style={{ fontSize: 10, color: 'var(--gray-500)', fontWeight: 700, textTransform: 'uppercase' }}>Own School (Self-Center)</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: '#0a1f6b', marginTop: 2 }}>{centerInfo.ownStudentsAtThisCenter}</div>
+                  <div style={{ fontSize: 10, color: 'var(--gray-500)', marginTop: 2 }}>
+                    {centerInfo.isSelfCenter ? 'Sitting on campus' : 'Sitting at external center'}
+                  </div>
                 </div>
                 <div style={{ background: '#dcfce7', padding: 12, borderRadius: 10, border: '1px solid #86efac' }}>
                   <div style={{ fontSize: 10, color: '#166534', fontWeight: 700, textTransform: 'uppercase' }}>Total Center Candidates</div>
-                  <div style={{ fontSize: 20, fontWeight: 800, color: '#15803d', marginTop: 2 }}>{centerInfo.ownStudents + centerInfo.totalIncomingStudents}</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: '#15803d', marginTop: 2 }}>{centerInfo.totalCenterCandidates}</div>
+                  <div style={{ fontSize: 10, color: '#166534', marginTop: 2 }}>Candidates sitting in your building</div>
                 </div>
               </div>
+
+              {centerInfo.externalCenter && (
+                <div style={{ background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '10px 14px', marginBottom: 14, fontSize: 11, color: '#1e40af' }}>
+                  ℹ️ <strong>Your Own Students:</strong> Your school's <strong>{centerInfo.ownStudentsTotal} enrolled students</strong> take their examinations at: <strong>📍 {centerInfo.externalCenter.name} ({centerInfo.externalCenter.schoolCode})</strong>.
+                </div>
+              )}
 
               <div style={{ fontWeight: 800, fontSize: 13, color: '#0a1f6b', marginBottom: 10 }}>Assigned Home Schools Breakdown</div>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
@@ -1708,11 +1757,13 @@ export function SchoolCenterDetails() {
                   </tr>
                 </thead>
                 <tbody>
-                  <tr style={{ borderBottom: '1px solid var(--gray-100)', background: '#fff' }}>
-                    <td style={{ padding: '8px 10px', fontWeight: 700 }}>{currentUser?.schoolName} (Own School)</td>
-                    <td style={{ padding: '8px 10px', color: 'var(--gray-500)' }}>CENTER-HOST</td>
-                    <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700 }}>{centerInfo.ownStudents}</td>
-                  </tr>
+                  {centerInfo.isSelfCenter && (
+                    <tr style={{ borderBottom: '1px solid var(--gray-100)', background: '#fff' }}>
+                      <td style={{ padding: '8px 10px', fontWeight: 700 }}>{currentUser?.schoolName} (Own School - Self Center)</td>
+                      <td style={{ padding: '8px 10px', color: 'var(--gray-500)' }}>SELF-HOST</td>
+                      <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 700 }}>{centerInfo.ownStudentsAtThisCenter}</td>
+                    </tr>
+                  )}
                   {centerInfo.assignedSchools.map((s, idx) => (
                     <tr key={s.id} style={{ borderBottom: '1px solid var(--gray-100)', background: idx % 2 === 0 ? '#f8fafc' : '#fff' }}>
                       <td style={{ padding: '8px 10px', fontWeight: 600 }}>{s.name}</td>
@@ -1720,9 +1771,9 @@ export function SchoolCenterDetails() {
                       <td style={{ padding: '8px 10px', textAlign: 'right', fontWeight: 800, color: '#1d4ed8' }}>{s.studentCount}</td>
                     </tr>
                   ))}
-                  {centerInfo.assignedSchools.length === 0 && (
+                  {centerInfo.assignedSchools.length === 0 && !centerInfo.isSelfCenter && (
                     <tr>
-                      <td colSpan={3} style={{ padding: 20, textAlign: 'center', color: 'var(--gray-400)' }}>No additional home schools assigned to this center yet.</td>
+                      <td colSpan={3} style={{ padding: 20, textAlign: 'center', color: 'var(--gray-400)' }}>No home schools currently assigned to sit exams at this center.</td>
                     </tr>
                   )}
                 </tbody>
@@ -1864,12 +1915,14 @@ export function AddSchoolStudent() {
                   value={form.class}
                   onChange={e => set('class', e.target.value)}
                 >
-                  <option value="SSC-I">Class 9 (SSC-I)</option>
-                  <option value="SSC-II">Class 10 (SSC-II)</option>
+                  <option value="SSC-I">Class 9 (SSC-I / Matric Part 1)</option>
+                  <option value="SSC-II">Class 10 (SSC-II / Matric Part 2)</option>
+                  <option value="HSSC-I">Class 11 (HSSC-I / 1st Year / Inter Part 1)</option>
+                  <option value="HSSC-II">Class 12 (HSSC-II / 2nd Year / Inter Part 2)</option>
                   <option value="SSC-I Supplementary">Class 9 Supplementary</option>
                   <option value="SSC-II Supplementary">Class 10 Supplementary</option>
-                  <option value="HSC-I">Class 11 (HSC-I)</option>
-                  <option value="HSC-II">Class 12 (HSC-II)</option>
+                  <option value="HSSC-I Supplementary">Class 11 Supplementary</option>
+                  <option value="HSSC-II Supplementary">Class 12 Supplementary</option>
                 </select>
                 {errors.class && <div className="field-error-msg">⚠️ {errors.class}</div>}
               </div>

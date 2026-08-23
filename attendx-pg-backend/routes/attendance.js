@@ -9,6 +9,31 @@ const { protect, requireRole } = require('../middleware/auth');
 // sitting at that center for that exam, picked from a class list rather than
 // a QR scan.
 
+// Helper: resolve student school IDs feeding into a center
+async function resolveCenterStudentSchoolIds(centerId) {
+  const { rows: homeSchools } = await pool.query(
+    'SELECT home_school_id FROM center_assignments WHERE center_school_id=$1',
+    [centerId]
+  );
+  const { rows: centerHomeRecord } = await pool.query(
+    'SELECT center_school_id FROM center_assignments WHERE home_school_id=$1',
+    [centerId]
+  );
+
+  const schoolIdsSet = new Set(homeSchools.map(h => h.home_school_id));
+  if (centerHomeRecord.length > 0) {
+    if (centerHomeRecord[0].center_school_id === centerId) {
+      schoolIdsSet.add(centerId); // Explicit self-center (10% case)
+    } else {
+      schoolIdsSet.delete(centerId); // Sent to another school (90% case)
+    }
+  } else {
+    // Unassigned center: default include own students
+    schoolIdsSet.add(centerId);
+  }
+  return Array.from(schoolIdsSet);
+}
+
 // GET roster for an exam at the teacher's assigned classroom — students who
 // are sitting this exam at this center. Pulled from the home school(s) feeding
 // into this center via center_assignments, plus the center's own students if
@@ -26,13 +51,7 @@ router.get('/roster', protect, requireRole('Teacher'), async (req, res) => {
     if (!examRows[0]) return res.status(404).json({ message: 'Exam not found' });
     const exam = examRows[0];
 
-    // Schools that feed students into this center (the center's own school +
-    // any home schools explicitly assigned to it by the Board)
-    const { rows: homeSchools } = await pool.query(
-      'SELECT home_school_id FROM center_assignments WHERE center_school_id=$1',
-      [exam.center_id]
-    );
-    const schoolIds = Array.from(new Set([exam.center_id, ...homeSchools.map(h => h.home_school_id)]));
+    const schoolIds = await resolveCenterStudentSchoolIds(exam.center_id);
 
     const { rows: students } = await pool.query(
       `SELECT id, name, unique_id, roll_no, class, section, school_id
@@ -410,11 +429,7 @@ router.get('/absent-list', protect, requireRole('Teacher','BoardAdmin','SchoolAd
     if (!examRows[0]) return res.json([]);
     const exam = examRows[0];
 
-    const { rows: homeSchools } = await pool.query(
-      'SELECT home_school_id FROM center_assignments WHERE center_school_id=$1',
-      [exam.center_id]
-    );
-    const schoolIds = Array.from(new Set([exam.center_id, ...homeSchools.map(h => h.home_school_id)]));
+    const schoolIds = await resolveCenterStudentSchoolIds(exam.center_id);
 
     const { rows: students } = await pool.query(
       `SELECT id,name,unique_id,roll_no,class FROM users 
@@ -551,11 +566,7 @@ router.post('/verify-admit-qr', protect, requireRole('Teacher'), async (req, res
     if (exam.status === 'Locked') return res.status(403).json({ valid: false, message: '🔒 Attendance is locked for this exam.' });
 
     // Look up student by unique_id OR roll_no in center-assigned schools for this exam
-    const { rows: homeSchools } = await pool.query(
-      'SELECT home_school_id FROM center_assignments WHERE center_school_id=$1',
-      [exam.center_id]
-    );
-    const schoolIds = Array.from(new Set([exam.center_id, ...homeSchools.map(h => h.home_school_id)]));
+    const schoolIds = await resolveCenterStudentSchoolIds(exam.center_id);
 
     let { rows: students } = await pool.query(
       `SELECT u.*, s.name as school_name

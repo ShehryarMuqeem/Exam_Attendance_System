@@ -11,6 +11,26 @@ async function nextUniqueId(role) {
   return `${prefix}-${String(rows[0].n).padStart(3, '0')}`;
 }
 
+function normalizeClass(raw) {
+  if (!raw) return 'SSC-I';
+  const s = String(raw).trim();
+  const lower = s.toLowerCase();
+  
+  if (lower.includes('supp')) {
+    if (lower.includes('12') || lower.includes('2nd') || lower.includes('hssc-ii') || lower.includes('hsc-ii')) return 'HSSC-II Supplementary';
+    if (lower.includes('11') || lower.includes('1st') || lower.includes('hssc-i') || lower.includes('hsc-i')) return 'HSSC-I Supplementary';
+    if (lower.includes('10') || lower.includes('matric') || lower.includes('ssc-ii')) return 'SSC-II Supplementary';
+    if (lower.includes('9') || lower.includes('ninth') || lower.includes('ssc-i')) return 'SSC-I Supplementary';
+  }
+
+  if (lower.includes('12') || lower.includes('2nd') || lower.includes('hssc-ii') || lower.includes('hsc-ii') || lower.includes('twelfth')) return 'HSSC-II';
+  if (lower.includes('11') || lower.includes('1st') || lower.includes('hssc-i') || lower.includes('hsc-i') || lower.includes('eleventh')) return 'HSSC-I';
+  if (lower.includes('10') || lower.includes('matric') || lower.includes('ssc-ii') || lower.includes('tenth')) return 'SSC-II';
+  if (lower.includes('9') || lower.includes('ninth') || lower.includes('ssc-i')) return 'SSC-I';
+  
+  return s;
+}
+
 async function getSchoolPrefix(poolOrClient, schoolId) {
   if (!schoolId) return 'sch';
   try {
@@ -144,18 +164,34 @@ router.post('/', protect, requireRole('BoardAdmin','SchoolAdmin'), async (req, r
       finalPassword = (password && password.trim()) ? password.trim() : `teach${Math.floor(1000 + Math.random() * 9000)}`;
     }
 
-    // Validate duplicate roll number for student within the same school, class, and batch (academic_year)
+    // Validate duplicate roll number for student board-wide across all schools for the same class and batch
+    const canonicalClass = role === 'Student' ? normalizeClass(cls) : cls;
+    const cleanBatch = academicYear ? academicYear.trim() : null;
+
     if (role === 'Student' && rollNo && rollNo.trim()) {
       const { rows: existingRoll } = await pool.query(
-        `SELECT id, name, unique_id FROM users 
-         WHERE role='Student' AND UPPER(TRIM(roll_no)) = UPPER(TRIM($1)) 
-           AND class=$2 AND school_id=$3
-           AND (academic_year = $4 OR ($4 IS NULL AND academic_year IS NULL))`,
-        [rollNo.trim(), cls, sid, academicYear || null]
+        `SELECT u.id, u.name, u.unique_id, u.academic_year, u.class, s.name as school_name, s.school_id as school_code 
+         FROM users u LEFT JOIN schools s ON u.school_id = s.id
+         WHERE u.role='Student' 
+           AND UPPER(TRIM(u.roll_no)) = UPPER(TRIM($1)) 
+           AND (
+             u.class = $2 
+             OR ($2 = 'SSC-I' AND (u.class ILIKE '%9%' OR u.class ILIKE '%ssc-i%'))
+             OR ($2 = 'SSC-II' AND (u.class ILIKE '%10%' OR u.class ILIKE '%ssc-ii%'))
+             OR ($2 = 'HSSC-I' AND (u.class ILIKE '%11%' OR u.class ILIKE '%hssc-i%'))
+             OR ($2 = 'HSSC-II' AND (u.class ILIKE '%12%' OR u.class ILIKE '%hssc-ii%'))
+           )
+           AND (
+             $3::varchar IS NULL 
+             OR u.academic_year IS NULL 
+             OR UPPER(TRIM(u.academic_year)) = UPPER(TRIM($3))
+           )`,
+        [rollNo.trim(), canonicalClass, cleanBatch]
       );
       if (existingRoll.length > 0) {
+        const prev = existingRoll[0];
         return res.status(400).json({
-          message: `❌ Duplicate Roll Number! Roll No. "${rollNo.trim()}" is already assigned to student ${existingRoll[0].unique_id} (${existingRoll[0].name || 'Student'}) in Batch "${academicYear || 'Default'}" (Class ${cls}).`
+          message: `❌ Duplicate Roll Number! Roll No. "${rollNo.trim()}" is already assigned to student "${prev.name || prev.unique_id}" (${prev.unique_id}) at "${prev.school_name || 'another institution'}" in ${prev.class || canonicalClass} (Batch: ${prev.academic_year || cleanBatch || 'Default'}). Roll numbers must be unique across all schools for the same class and batch to prevent result conflicts.`
         });
       }
     }
@@ -239,19 +275,35 @@ router.put('/:id', protect, requireRole('BoardAdmin','SchoolAdmin'), async (req,
     const targetClass = cls || currentUser[0].class;
     const targetBatch = academicYear !== undefined ? academicYear : currentUser[0].academic_year;
 
-    // Check duplicate roll number on update
+    // Check duplicate roll number on update (board-wide for same class and batch)
     if (userRole === 'Student' && rollNo && rollNo.trim()) {
+      const canonicalTargetClass = normalizeClass(targetClass);
+      const cleanTargetBatch = targetBatch ? targetBatch.trim() : null;
+
       const { rows: existingRoll } = await pool.query(
-        `SELECT id, name, unique_id FROM users 
-         WHERE role='Student' AND UPPER(TRIM(roll_no)) = UPPER(TRIM($1)) 
-           AND class=$2 AND school_id=$3 
-           AND (academic_year = $4 OR ($4 IS NULL AND academic_year IS NULL))
-           AND id != $5`,
-        [rollNo.trim(), targetClass, userSchoolId, targetBatch || null, req.params.id]
+        `SELECT u.id, u.name, u.unique_id, u.academic_year, u.class, s.name as school_name 
+         FROM users u LEFT JOIN schools s ON u.school_id = s.id
+         WHERE u.role='Student' 
+           AND UPPER(TRIM(u.roll_no)) = UPPER(TRIM($1)) 
+           AND (
+             u.class = $2 
+             OR ($2 = 'SSC-I' AND (u.class ILIKE '%9%' OR u.class ILIKE '%ssc-i%'))
+             OR ($2 = 'SSC-II' AND (u.class ILIKE '%10%' OR u.class ILIKE '%ssc-ii%'))
+             OR ($2 = 'HSSC-I' AND (u.class ILIKE '%11%' OR u.class ILIKE '%hssc-i%'))
+             OR ($2 = 'HSSC-II' AND (u.class ILIKE '%12%' OR u.class ILIKE '%hssc-ii%'))
+           )
+           AND (
+             $3::varchar IS NULL 
+             OR u.academic_year IS NULL 
+             OR UPPER(TRIM(u.academic_year)) = UPPER(TRIM($3))
+           )
+           AND u.id != $4`,
+        [rollNo.trim(), canonicalTargetClass, cleanTargetBatch, req.params.id]
       );
       if (existingRoll.length > 0) {
+        const prev = existingRoll[0];
         return res.status(400).json({
-          message: `❌ Duplicate Roll Number! Roll No. "${rollNo.trim()}" is already assigned to student ${existingRoll[0].unique_id} in Batch "${targetBatch || 'Default'}" (Class ${targetClass}).`
+          message: `❌ Duplicate Roll Number! Roll No. "${rollNo.trim()}" is already assigned to student "${prev.name || prev.unique_id}" (${prev.unique_id}) at "${prev.school_name || 'another institution'}" in ${prev.class || canonicalTargetClass} (Batch: ${prev.academic_year || cleanTargetBatch || 'Default'}). Roll numbers must be unique across all schools for the same class and batch.`
         });
       }
     }
@@ -325,18 +377,18 @@ router.post('/bulk-update-roll', protect, requireRole('SchoolAdmin'), async (req
       if (!roll) continue;
       const targetClass = u.class || defaultClass || 'SSC-I';
       const targetBatch = u.academicYear || defaultYear || 'Default';
-      const key = `${targetClass}_${targetBatch}_${roll.toLowerCase()}`;
+      const key = `${targetClass.toUpperCase()}_${targetBatch.toUpperCase()}_${roll.toUpperCase()}`;
 
       if (seenRollMap.has(key)) {
         const prevRow = seenRollMap.get(key);
         return res.status(400).json({
-          message: `❌ Duplicate Roll Number in Upload File! Roll No. "${roll}" appears multiple times in your sheet (Row ${prevRow + 1} and Row ${i + 1}). Every student must have a unique roll number.`
+          message: `❌ Duplicate Roll Number in Sheet! Roll No. "${roll}" appears multiple times in your sheet (Row ${prevRow + 1} and Row ${i + 1}) for Class ${targetClass} (Batch "${targetBatch}"). Every student must have a unique roll number.`
         });
       }
       seenRollMap.set(key, i);
     }
 
-    // 2. Validate duplicates AGAINST THE DATABASE
+    // 2. Validate duplicates board-wide AGAINST THE DATABASE
     for (let i = 0; i < updates.length; i++) {
       const u = updates[i];
       const roll = (u.rollNo !== undefined && u.rollNo !== null) ? String(u.rollNo).trim() : '';
@@ -344,13 +396,28 @@ router.post('/bulk-update-roll', protect, requireRole('SchoolAdmin'), async (req
       const targetClass = u.class || defaultClass || 'SSC-I';
       const targetBatch = u.academicYear || defaultYear || null;
 
-      // Check if student with this roll number already exists in this school & batch
+      // Check if student with this roll number already exists board-wide across any school
+      const canonicalTargetClass = normalizeClass(targetClass);
+      const cleanTargetBatch = targetBatch ? targetBatch.trim() : null;
+
       const { rows: existing } = await client.query(
-        `SELECT id, unique_id, name FROM users 
-         WHERE role = 'Student' AND school_id = $1 AND class = $2 
-           AND UPPER(TRIM(roll_no)) = UPPER($3)
-           AND (academic_year = $4 OR ($4 IS NULL AND academic_year IS NULL))`,
-        [targetSchoolId, targetClass, roll, targetBatch]
+        `SELECT u.id, u.unique_id, u.name, u.academic_year, u.class, s.name as school_name 
+         FROM users u LEFT JOIN schools s ON u.school_id = s.id
+         WHERE u.role = 'Student' 
+           AND UPPER(TRIM(u.roll_no)) = UPPER($1)
+           AND (
+             u.class = $2 
+             OR ($2 = 'SSC-I' AND (u.class ILIKE '%9%' OR u.class ILIKE '%ssc-i%'))
+             OR ($2 = 'SSC-II' AND (u.class ILIKE '%10%' OR u.class ILIKE '%ssc-ii%'))
+             OR ($2 = 'HSSC-I' AND (u.class ILIKE '%11%' OR u.class ILIKE '%hssc-i%'))
+             OR ($2 = 'HSSC-II' AND (u.class ILIKE '%12%' OR u.class ILIKE '%hssc-ii%'))
+           )
+           AND (
+             $3::varchar IS NULL 
+             OR u.academic_year IS NULL 
+             OR UPPER(TRIM(u.academic_year)) = UPPER(TRIM($3))
+           )`,
+        [roll, canonicalTargetClass, cleanTargetBatch]
       );
 
       if (existing.length > 0) {
@@ -358,8 +425,9 @@ router.post('/bulk-update-roll', protect, requireRole('SchoolAdmin'), async (req
         if (u.uniqueId && existing[0].unique_id === u.uniqueId) {
           continue;
         }
+        const prev = existing[0];
         return res.status(400).json({
-          message: `❌ Duplicate Roll Number! Roll No. "${roll}" (Row ${i + 1}) is already assigned to student "${existing[0].name || existing[0].unique_id}" in Batch "${targetBatch || 'Default'}" (Class ${targetClass}). Please assign a unique roll number.`
+          message: `❌ Duplicate Roll Number! Roll No. "${roll}" (Row ${i + 1}) is already assigned to student "${prev.name || prev.unique_id}" (${prev.unique_id}) at "${prev.school_name || 'Another Institution'}" in ${prev.class || canonicalTargetClass} (Batch: ${prev.academic_year || cleanTargetBatch || 'Default'}). Roll numbers must be unique across all schools for the same class and batch to prevent result conflicts.`
         });
       }
     }

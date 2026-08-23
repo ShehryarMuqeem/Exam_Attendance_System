@@ -39,21 +39,22 @@ export function AdminDashboard() {
   }, [api]);
 
   const cards = [
-    { label:'Schools',  value: stats.schools,  icon:'🏫', color:'#2255d4', path:'/admin/schools' },
+    { label:'Institutions',  value: stats.schools,  icon:'🏫', color:'#2255d4', path:'/admin/schools' },
     { label:'Teachers', value: stats.teachers, icon:'👩‍🏫', color:'#0891b2', path:'/admin/users?role=Teacher' },
     { label:'Students', value: stats.students, icon:'🎓', color:'#16a34a', path:'/admin/users?role=Student' },
     { label:'Exams',    value: stats.exams,    icon:'📋', color:'#d97706', path:'/admin/exams' },
   ];
 
   const actions = [
-    { label:'Manage Schools',         icon:'🏫', path:'/admin/schools',           desc:'Add, edit, and manage registered schools' },
-    { label:'Manage Users',           icon:'👥', path:'/admin/users',             desc:'Teachers and students across all schools' },
+    { label:'Schools & Colleges',     icon:'🏫', path:'/admin/schools',           desc:'Add, edit, and manage registered schools & degree colleges' },
+    { label:'Manage Users',           icon:'👥', path:'/admin/users',             desc:'Teachers and students across all schools & colleges' },
     { label:'Password Reset Requests',icon:'🔐', path:'/admin/password-requests', desc:'Review and reset forgotten passwords for staff & teachers', badge: stats.pendingResets },
     { label:'Manage Exams',           icon:'📋', path:'/admin/exams',             desc:'Year → Term → Department → Subject hierarchy' },
     { label:'Manage Batches',         icon:'📅', path:'/admin/batches',           desc:'Add and manage academic year batches (e.g. 2026-2027)' },
-    { label:'Examination Centers',    icon:'📍', path:'/admin/centers',           desc:'Assign schools as exam centers for other schools' },
+    { label:'Examination Centers',    icon:'📍', path:'/admin/centers',           desc:'Assign schools and colleges as exam centers for other institutions' },
     { label:'Attendance Overview',    icon:'✅', path:'/admin/attendance',        desc:'View attendance records across all exams' },
     { label:'Analytics',              icon:'📊', path:'/admin/analytics',         desc:'Attendance rates and trends' },
+    { label:'Change Board Password',  icon:'🔑', path:'/admin/change-password',   desc:'Update your Board Administrator login password' },
   ];
 
   return (
@@ -442,9 +443,9 @@ function BulkImportSchoolsModal({ open, onClose, onImportSuccess, showToast, api
         {/* Header */}
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16, borderBottom:'1px solid var(--gray-100)', paddingBottom:12 }}>
           <div>
-            <h3 style={{ fontSize:18, fontWeight:800, color:'#0a1f6b', margin:0 }}>📥 Bulk Import Schools (Excel / CSV)</h3>
+            <h3 style={{ fontSize:18, fontWeight:800, color:'#0a1f6b', margin:0 }}>📥 Bulk Import Schools & Colleges (Excel / CSV)</h3>
             <div style={{ fontSize:12, color:'var(--gray-500)', marginTop:2 }}>
-              Upload multiple schools at once. Principal CNIC is set as the initial login password.
+              Upload multiple schools and colleges at once. Principal/Head CNIC is set as the initial login password.
             </div>
           </div>
           <button onClick={onClose} style={{ background:'none', border:'none', fontSize:24, cursor:'pointer', color:'var(--gray-400)' }}>×</button>
@@ -630,14 +631,14 @@ export function SchoolManagement() {
   return (
     <Page>
       <Toast />
-      <PageHeader title="Schools Management" icon="🏫" backPath="/admin" />
+      <PageHeader title="Schools & Colleges Management" icon="🏫" backPath="/admin" />
       <div className="page-content">
         
         {/* Top Actions Bar */}
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', flexWrap:'wrap', gap:10, marginBottom:16 }}>
           <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
             <button className="btn btn-primary btn-sm" onClick={() => navigate('/admin/schools/add')}>
-              + Register School
+              + Register School / College
             </button>
             <button 
               className="btn btn-ghost btn-sm" 
@@ -656,10 +657,10 @@ export function SchoolManagement() {
           </button>
         </div>
 
-        <SearchBar value={search} onChange={setSearch} placeholder="Search by School Name, ID, District, Principal, or CNIC…" />
+        <SearchBar value={search} onChange={setSearch} placeholder="Search by School/College Name, ID, District, Principal, or CNIC…" />
 
         <div style={{ fontSize:11, color:'var(--gray-500)', margin:'10px 0 14px', fontWeight:600 }}>
-          {filtered.length} school{filtered.length !== 1 ? 's' : ''} registered
+          {filtered.length} institution{filtered.length !== 1 ? 's' : ''} (schools & colleges) registered
         </div>
 
         <div className="wide-grid">
@@ -843,15 +844,15 @@ export function AddSchool() {
   return (
     <Page>
       <Toast />
-      <PageHeader title="Register School" icon="🏫" backPath="/admin/schools" />
+      <PageHeader title="Register School / College" icon="🏫" backPath="/admin/schools" />
       <div className="page-content">
 
         {createdInfo ? (
           <div className="card" style={{ background:'#fff', borderRadius:16, padding:24, border:'1px solid #bbf7d0', boxShadow:'0 4px 20px rgba(0,0,0,0.06)' }}>
             <div style={{ textAlign:'center', marginBottom:18 }}>
               <div style={{ fontSize:40 }}>🎉</div>
-              <h3 style={{ fontSize:18, fontWeight:800, color:'#166534', margin:'8px 0 4px' }}>School Registered Successfully!</h3>
-              <p style={{ fontSize:12, color:'#15803d', margin:0 }}>Share these login credentials with the Principal / School Admin.</p>
+              <h3 style={{ fontSize:18, fontWeight:800, color:'#166534', margin:'8px 0 4px' }}>Institution Registered Successfully!</h3>
+              <p style={{ fontSize:12, color:'#15803d', margin:0 }}>Share these login credentials with the Principal / Head of Institution.</p>
             </div>
 
             <div style={{ background:'#f0fdf4', border:'1px solid #86efac', borderRadius:12, padding:16, marginBottom:18 }}>
@@ -883,13 +884,13 @@ export function AddSchool() {
             {/* School Info */}
             <div className="card" style={{ background:'#fff', borderRadius:14, padding:16, border:'1px solid var(--gray-100)' }}>
               <div style={{ fontWeight:700, fontSize:13, marginBottom:12, color:'#0a1f6b' }}>
-                🏫 School Information
+                🏫 Institution Information (School / College)
               </div>
               <div className={`input-group ${errors.name ? 'has-error' : ''}`}>
-                <label>School Name <span className="req-star">*</span></label>
+                <label>School / College Name <span className="req-star">*</span></label>
                 <input 
                   className={`input-field ${errors.name ? 'input-error' : ''}`}
-                  placeholder="e.g. Army Public School or City Model High School" 
+                  placeholder="e.g. Govt Degree College, Army Public College, or City High School" 
                   value={form.name} 
                   onChange={e => set('name', e.target.value)} 
                 />
@@ -1209,7 +1210,7 @@ export function AddUser() {
                 <label>Class <span className="req-star">*</span></label>
                 <select className={`input-field ${errors.class ? 'input-error' : ''}`} value={form.class} onChange={e=>set('class',e.target.value)}>
                   <option value="">Select Class</option>
-                  {['SSC-I','SSC-II','HSC-I','HSC-II','SSC-I Supplementary','SSC-II Supplementary','HSC-I Supplementary','HSC-II Supplementary'].map(c=><option key={c}>{c}</option>)}
+                  {['SSC-I','SSC-II','HSSC-I','HSSC-II','HSC-I','HSC-II','SSC-I Supplementary','SSC-II Supplementary','HSSC-I Supplementary','HSSC-II Supplementary','HSC-I Supplementary','HSC-II Supplementary'].map(c=><option key={c}>{c}</option>)}
                 </select>
                 {errors.class && <div className="field-error-msg">⚠️ {errors.class}</div>}
               </div>
@@ -1676,8 +1677,9 @@ export function CreateExam() {
   const [centers, setCenters] = useState([]);
   const [createdExamResult, setCreatedExamResult] = useState(null);
   const [classOptions, setClassOptions] = useState([
-    'SSC-I', 'SSC-II', 'HSC-I', 'HSC-II',
+    'SSC-I', 'SSC-II', 'HSSC-I', 'HSSC-II', 'HSC-I', 'HSC-II',
     'SSC-I Supplementary', 'SSC-II Supplementary',
+    'HSSC-I Supplementary', 'HSSC-II Supplementary',
     'HSC-I Supplementary', 'HSC-II Supplementary'
   ]);
 
@@ -1956,8 +1958,90 @@ function BulkImportCentersModal({ open, onClose, schools, onImportSuccess }) {
   const [parsedRows, setParsedRows] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [importSummary, setImportSummary] = useState(null);
+  const [allowSelfCenter, setAllowSelfCenter] = useState(false);
+  const [rawParsedData, setRawParsedData] = useState([]);
 
   if (!open) return null;
+
+  const processRawRows = (rawRows, isSelfAllowed) => {
+    const clean = (v) => (v === undefined || v === null ? '' : String(v).trim().replace(/^["']|["']$/g, '').trim());
+    const headerRow = (rawRows[0] || []).map(c => clean(c).toLowerCase().replace(/[^a-z0-9]/g, ''));
+
+    let homeCodeIdx = -1, centerCodeIdx = -1, homeNameIdx = -1, centerNameIdx = -1;
+
+    headerRow.forEach((col, idx) => {
+      if (['homeschoolcode', 'homecode', 'homeschoolid', 'schoolcode', 'schoolid'].includes(col)) homeCodeIdx = idx;
+      else if (['centerschoolcode', 'centercode', 'centerschoolid', 'centerid', 'examcenterid', 'center_code'].includes(col)) centerCodeIdx = idx;
+      else if (['homeschoolname', 'homeschool', 'homename', 'schoolname'].includes(col)) homeNameIdx = idx;
+      else if (['centerschoolname', 'centerschool', 'centername', 'examcentername', 'center'].includes(col)) centerNameIdx = idx;
+    });
+
+    // Positional fallback
+    if (homeCodeIdx === -1 && homeNameIdx === -1) homeCodeIdx = 0;
+    if (centerCodeIdx === -1 && centerNameIdx === -1 && headerRow.length > 1) centerCodeIdx = 1;
+    if (homeNameIdx === -1 && headerRow.length > 2) homeNameIdx = 2;
+    if (centerNameIdx === -1 && headerRow.length > 3) centerNameIdx = 3;
+
+    // Build school lookup map
+    const schoolMapByCode = new Map();
+    const schoolMapByName = new Map();
+    schools.forEach(s => {
+      if (s.school_id) schoolMapByCode.set(String(s.school_id).trim().toLowerCase(), s);
+      if (s.name) schoolMapByName.set(String(s.name).trim().toLowerCase(), s);
+    });
+
+    const findLocalSchool = (code, name) => {
+      if (code && schoolMapByCode.has(String(code).trim().toLowerCase())) return schoolMapByCode.get(String(code).trim().toLowerCase());
+      if (name && schoolMapByName.has(String(name).trim().toLowerCase())) return schoolMapByName.get(String(name).trim().toLowerCase());
+      return null;
+    };
+
+    const rows = [];
+    for (let i = 1; i < rawRows.length; i++) {
+      const r = rawRows[i];
+      if (!r || r.length === 0 || r.every(c => !c)) continue;
+
+      const homeCode = homeCodeIdx !== -1 ? clean(r[homeCodeIdx]) : '';
+      const centerCode = centerCodeIdx !== -1 ? clean(r[centerCodeIdx]) : '';
+      const homeName = homeNameIdx !== -1 ? clean(r[homeNameIdx]) : '';
+      const centerName = centerNameIdx !== -1 ? clean(r[centerNameIdx]) : '';
+
+      if (homeCode || centerCode || homeName || centerName) {
+        const matchedHome = findLocalSchool(homeCode, homeName);
+        const matchedCenter = findLocalSchool(centerCode, centerName);
+
+        let valid = true;
+        let error = '';
+        const isSelf = (matchedHome && matchedCenter && matchedHome.id === matchedCenter.id);
+
+        if (!matchedHome) {
+          valid = false;
+          error = `Home school "${homeCode || homeName}" not found`;
+        } else if (!matchedCenter) {
+          valid = false;
+          error = `Center school "${centerCode || centerName}" not found`;
+        } else if (isSelf && !isSelfAllowed) {
+          valid = false;
+          error = 'Self-center assignment skipped — check "Allow Self-Center" box to include';
+        }
+
+        rows.push({
+          homeSchoolCode: homeCode || matchedHome?.school_id || '',
+          centerSchoolCode: centerCode || matchedCenter?.school_id || '',
+          homeSchoolName: homeName || matchedHome?.name || '',
+          centerSchoolName: centerName || matchedCenter?.name || '',
+          homeSchoolId: matchedHome?.id,
+          centerSchoolId: matchedCenter?.id,
+          matchedHomeName: matchedHome?.name,
+          matchedCenterName: matchedCenter?.name,
+          isSelfCenter: isSelf,
+          valid,
+          error
+        });
+      }
+    }
+    return rows;
+  };
 
   const handleFileSelect = async (e) => {
     const selectedFile = e.target.files[0];
@@ -1981,81 +2065,8 @@ function BulkImportCentersModal({ open, onClose, schools, onImportSuccess }) {
             return;
           }
 
-          const clean = (v) => (v === undefined || v === null ? '' : String(v).trim().replace(/^["']|["']$/g, '').trim());
-          const headerRow = (rawRows[0] || []).map(c => clean(c).toLowerCase().replace(/[^a-z0-9]/g, ''));
-
-          let homeCodeIdx = -1, centerCodeIdx = -1, homeNameIdx = -1, centerNameIdx = -1;
-
-          headerRow.forEach((col, idx) => {
-            if (['homeschoolcode', 'homecode', 'homeschoolid', 'schoolcode', 'schoolid'].includes(col)) homeCodeIdx = idx;
-            else if (['centerschoolcode', 'centercode', 'centerschoolid', 'centerid', 'examcenterid', 'center_code'].includes(col)) centerCodeIdx = idx;
-            else if (['homeschoolname', 'homeschool', 'homename', 'schoolname'].includes(col)) homeNameIdx = idx;
-            else if (['centerschoolname', 'centerschool', 'centername', 'examcentername', 'center'].includes(col)) centerNameIdx = idx;
-          });
-
-          // Positional fallback
-          if (homeCodeIdx === -1 && homeNameIdx === -1) homeCodeIdx = 0;
-          if (centerCodeIdx === -1 && centerNameIdx === -1 && headerRow.length > 1) centerCodeIdx = 1;
-          if (homeNameIdx === -1 && headerRow.length > 2) homeNameIdx = 2;
-          if (centerNameIdx === -1 && headerRow.length > 3) centerNameIdx = 3;
-
-          // Build school lookup map
-          const schoolMapByCode = new Map();
-          const schoolMapByName = new Map();
-          schools.forEach(s => {
-            if (s.school_id) schoolMapByCode.set(String(s.school_id).trim().toLowerCase(), s);
-            if (s.name) schoolMapByName.set(String(s.name).trim().toLowerCase(), s);
-          });
-
-          const findLocalSchool = (code, name) => {
-            if (code && schoolMapByCode.has(String(code).trim().toLowerCase())) return schoolMapByCode.get(String(code).trim().toLowerCase());
-            if (name && schoolMapByName.has(String(name).trim().toLowerCase())) return schoolMapByName.get(String(name).trim().toLowerCase());
-            return null;
-          };
-
-          const rows = [];
-          for (let i = 1; i < rawRows.length; i++) {
-            const r = rawRows[i];
-            if (!r || r.length === 0 || r.every(c => !c)) continue;
-
-            const homeCode = homeCodeIdx !== -1 ? clean(r[homeCodeIdx]) : '';
-            const centerCode = centerCodeIdx !== -1 ? clean(r[centerCodeIdx]) : '';
-            const homeName = homeNameIdx !== -1 ? clean(r[homeNameIdx]) : '';
-            const centerName = centerNameIdx !== -1 ? clean(r[centerNameIdx]) : '';
-
-            if (homeCode || centerCode || homeName || centerName) {
-              const matchedHome = findLocalSchool(homeCode, homeName);
-              const matchedCenter = findLocalSchool(centerCode, centerName);
-
-              let valid = true;
-              let error = '';
-
-              if (!matchedHome) {
-                valid = false;
-                error = `Home school "${homeCode || homeName}" not found`;
-              } else if (!matchedCenter) {
-                valid = false;
-                error = `Center school "${centerCode || centerName}" not found`;
-              } else if (matchedHome.id === matchedCenter.id) {
-                valid = false;
-                error = 'Home and Center cannot be the same school';
-              }
-
-              rows.push({
-                homeSchoolCode: homeCode || matchedHome?.school_id || '',
-                centerSchoolCode: centerCode || matchedCenter?.school_id || '',
-                homeSchoolName: homeName || matchedHome?.name || '',
-                centerSchoolName: centerName || matchedCenter?.name || '',
-                homeSchoolId: matchedHome?.id,
-                centerSchoolId: matchedCenter?.id,
-                matchedHomeName: matchedHome?.name,
-                matchedCenterName: matchedCenter?.name,
-                valid,
-                error
-              });
-            }
-          }
-
+          setRawParsedData(rawRows);
+          const rows = processRawRows(rawRows, allowSelfCenter);
           setParsedRows(rows);
         } catch (err) {
           showToast('Failed to parse sheet: ' + err.message, 'error');
@@ -2066,6 +2077,14 @@ function BulkImportCentersModal({ open, onClose, schools, onImportSuccess }) {
     } catch (err) {
       showToast('Could not load Excel parser', 'error');
       setParsing(false);
+    }
+  };
+
+  const handleToggleSelfCenter = (checked) => {
+    setAllowSelfCenter(checked);
+    if (rawParsedData.length > 0) {
+      const updated = processRawRows(rawParsedData, checked);
+      setParsedRows(updated);
     }
   };
 
@@ -2080,7 +2099,7 @@ function BulkImportCentersModal({ open, onClose, schools, onImportSuccess }) {
     try {
       const res = await api('/centers/bulk-assign', {
         method: 'POST',
-        body: JSON.stringify({ assignments: validRows })
+        body: JSON.stringify({ assignments: validRows, allowSelfCenter })
       });
       showToast(res.message || 'Center assignments imported! ✓', 'success');
       setImportSummary(res);
@@ -2093,14 +2112,14 @@ function BulkImportCentersModal({ open, onClose, schools, onImportSuccess }) {
 
   return (
     <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
-      <div style={{ background:'#fff', borderRadius:16, width:'100%', maxWidth:760, maxHeight:'90vh', overflowY:'auto', boxShadow:'0 12px 48px rgba(0,0,0,0.25)', padding:24 }}>
+      <div style={{ background:'#fff', borderRadius:16, width:'100%', maxWidth:780, maxHeight:'90vh', overflowY:'auto', boxShadow:'0 12px 48px rgba(0,0,0,0.25)', padding:24 }}>
         
         {/* Header */}
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16, borderBottom:'1px solid var(--gray-100)', paddingBottom:12 }}>
           <div>
             <h3 style={{ fontSize:18, fontWeight:800, color:'#0a1f6b', margin:0 }}>📥 Bulk Import Centers (CSV / Excel)</h3>
             <div style={{ fontSize:12, color:'var(--gray-500)', marginTop:2 }}>
-              Upload exam center allocations in bulk. Home schools will be assigned to their designated exam centers.
+              Upload exam center allocations in bulk. Classifies External Centers vs Self-Centers.
             </div>
           </div>
           <button onClick={onClose} style={{ background:'none', border:'none', fontSize:24, cursor:'pointer', color:'var(--gray-400)' }}>×</button>
@@ -2116,7 +2135,7 @@ function BulkImportCentersModal({ open, onClose, schools, onImportSuccess }) {
               </div>
               {importSummary.skippedCount > 0 && (
                 <div style={{ fontSize:12, color:'#b45309', marginTop:4 }}>
-                  ⚠️ {importSummary.skippedCount} rows were skipped due to errors.
+                  ⚠️ {importSummary.skippedCount} rows were skipped due to errors or self-center filter.
                 </div>
               )}
             </div>
@@ -2127,6 +2146,24 @@ function BulkImportCentersModal({ open, onClose, schools, onImportSuccess }) {
           </div>
         ) : (
           <div>
+            {/* Self-Center Policy Filter Toggle */}
+            <div style={{ background:'#f0f4ff', border:'1px solid #c7d2fe', borderRadius:12, padding:'12px 16px', marginBottom:14 }}>
+              <label style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer', fontWeight:700, fontSize:13, color:'#0a1f6b' }}>
+                <input
+                  type="checkbox"
+                  checked={allowSelfCenter}
+                  onChange={e => handleToggleSelfCenter(e.target.checked)}
+                  style={{ width:18, height:18, cursor:'pointer' }}
+                />
+                <span>Allow Self-Center records (Students take exams in their OWN school / college campus)</span>
+              </label>
+              <div style={{ fontSize:11, color:'var(--gray-600)', marginTop:4, marginLeft:28 }}>
+                {allowSelfCenter
+                  ? '✅ Self-center rows (Home School = Exam Center) will be imported as valid.'
+                  : '🛡️ External Center Mode Active: Prevents accidental same-school allocations unless enabled.'}
+              </div>
+            </div>
+
             {/* Template & Download */}
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', background:'#f8fafc', padding:'12px 16px', borderRadius:12, border:'1px solid #e2e8f0', marginBottom:16 }}>
               <div>
@@ -2139,10 +2176,10 @@ function BulkImportCentersModal({ open, onClose, schools, onImportSuccess }) {
             </div>
 
             {/* Dropzone */}
-            <div style={{ border:'2px dashed #cbd5e1', borderRadius:14, padding:'24px 16px', textAlign:'center', marginBottom:16, background:'#fcfcfd' }}>
-              <div style={{ fontSize:32, marginBottom:6 }}>📑</div>
+            <div style={{ border:'2px dashed #cbd5e1', borderRadius:14, padding:'20px 16px', textAlign:'center', marginBottom:16, background:'#fcfcfd' }}>
+              <div style={{ fontSize:30, marginBottom:6 }}>📑</div>
               <div style={{ fontSize:13, fontWeight:700, color:'#1e293b' }}>Select or Drag Excel / CSV File</div>
-              <div style={{ fontSize:11, color:'var(--gray-400)', marginTop:2, marginBottom:12 }}>Supports .xlsx, .xls, .csv</div>
+              <div style={{ fontSize:11, color:'var(--gray-400)', marginTop:2, marginBottom:10 }}>Supports .xlsx, .xls, .csv</div>
               <input type="file" accept=".csv,.xlsx,.xls" onChange={handleFileSelect} style={{ fontSize:12 }} />
               {parsing && <div style={{ fontSize:12, color:'#2563eb', marginTop:8, fontWeight:600 }}>⏳ Parsing sheet data…</div>}
             </div>
@@ -2150,12 +2187,13 @@ function BulkImportCentersModal({ open, onClose, schools, onImportSuccess }) {
             {/* Preview Table */}
             {parsedRows.length > 0 && (
               <div style={{ marginBottom:16 }}>
-                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8, flexWrap:'wrap', gap:6 }}>
                   <div style={{ fontSize:12, fontWeight:700, color:'#0a1f6b' }}>
                     Preview: {parsedRows.filter(r => r.valid).length} valid / {parsedRows.length} total rows
+                    ({parsedRows.filter(r => r.valid && !r.isSelfCenter).length} External Centers, {parsedRows.filter(r => r.valid && r.isSelfCenter).length} Self-Centers)
                   </div>
                   {parsedRows.some(r => !r.valid) && (
-                    <span style={{ fontSize:11, color:'#dc2626', fontWeight:600 }}>⚠️ Some rows cannot be matched with existing schools</span>
+                    <span style={{ fontSize:11, color:'#dc2626', fontWeight:600 }}>⚠️ Some rows cannot be imported</span>
                   )}
                 </div>
                 <div style={{ maxHeight:220, overflowY:'auto', border:'1px solid #e2e8f0', borderRadius:10 }}>
@@ -2163,16 +2201,28 @@ function BulkImportCentersModal({ open, onClose, schools, onImportSuccess }) {
                     <thead style={{ background:'#f1f5f9', position:'sticky', top:0 }}>
                       <tr style={{ borderBottom:'1px solid #cbd5e1' }}>
                         <th style={{ padding:'6px 8px' }}>Status</th>
+                        <th style={{ padding:'6px 8px' }}>Type</th>
                         <th style={{ padding:'6px 8px' }}>Home School</th>
                         <th style={{ padding:'6px 8px' }}>Exam Center School</th>
-                        <th style={{ padding:'6px 8px' }}>Notes / Error</th>
+                        <th style={{ padding:'6px 8px' }}>Notes</th>
                       </tr>
                     </thead>
                     <tbody>
                       {parsedRows.map((r, i) => (
-                        <tr key={i} style={{ borderBottom:'1px solid #f1f5f9', background: r.valid ? '#fff' : '#fef2f2' }}>
+                        <tr key={i} style={{ borderBottom:'1px solid #f1f5f9', background: r.valid ? (r.isSelfCenter ? '#fffbeb' : '#fff') : '#fef2f2' }}>
                           <td style={{ padding:'6px 8px' }}>
                             {r.valid ? <span className="badge badge-green" style={{ fontSize:9 }}>Ready</span> : <span className="badge badge-red" style={{ fontSize:9 }}>Invalid</span>}
+                          </td>
+                          <td style={{ padding:'6px 8px' }}>
+                            {r.isSelfCenter ? (
+                              <span style={{ background:'#fef3c7', color:'#92400e', padding:'2px 6px', borderRadius:4, fontSize:9, fontWeight:700, border:'1px solid #fde68a' }}>
+                                🏫 Self-Center
+                              </span>
+                            ) : (
+                              <span style={{ background:'#e0f2fe', color:'#0369a1', padding:'2px 6px', borderRadius:4, fontSize:9, fontWeight:700, border:'1px solid #bae6fd' }}>
+                                🏢 External Center
+                              </span>
+                            )}
                           </td>
                           <td style={{ padding:'6px 8px', fontWeight:600 }}>
                             {r.matchedHomeName || r.homeSchoolName || r.homeSchoolCode}
@@ -2183,7 +2233,7 @@ function BulkImportCentersModal({ open, onClose, schools, onImportSuccess }) {
                             {r.centerSchoolCode && <span style={{ color:'var(--gray-400)', fontWeight:400, marginLeft:4 }}>({r.centerSchoolCode})</span>}
                           </td>
                           <td style={{ padding:'6px 8px', color: r.valid ? '#16a34a' : '#dc2626', fontSize:10 }}>
-                            {r.valid ? 'Valid Allocation' : r.error}
+                            {r.valid ? (r.isSelfCenter ? 'Self-Center Allocation' : 'External Allocation') : r.error}
                           </td>
                         </tr>
                       ))}
@@ -2218,12 +2268,14 @@ export function CenterManagement() {
   const [schools, setSchools] = useState([]);
   const [homeSchoolId, setHomeSchoolId] = useState('');
   const [centerSchoolId, setCenterSchoolId] = useState('');
+  const [assignmentMode, setAssignmentMode] = useState('EXTERNAL'); // 'EXTERNAL' or 'SELF'
   const [loading, setLoading] = useState(false);
   const [editId, setEditId] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [showBulkModal, setShowBulkModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [showManualForm, setShowManualForm] = useState(false);
+  const [activeTab, setActiveTab] = useState('ALL'); // 'ALL' | 'EXTERNAL' | 'SELF' | 'UNASSIGNED'
 
   const load = useCallback(() => {
     api('/centers').then(setAssignments).catch(()=>{});
@@ -2231,18 +2283,62 @@ export function CenterManagement() {
   }, [api]);
   useEffect(()=>{ load(); },[load]);
 
-  // Schools already assigned as home — remove from dropdown (one center per school)
+  // Set of school IDs assigned as a home school
   const assignedHomeIds = new Set(assignments.filter(a => !editId || a._id !== editId).map(a => String(a.homeSchool.id)));
   const availableHomeSchools = schools.filter(s => !assignedHomeIds.has(String(s.id)));
 
+  // Filter center options in manual form: when in EXTERNAL mode, exclude the selected home school
+  const availableCenterSchools = schools.filter(s => {
+    if (assignmentMode === 'EXTERNAL' && homeSchoolId && String(s.id) === String(homeSchoolId)) {
+      return false;
+    }
+    return true;
+  });
+
+  const handleHomeSchoolChange = (id) => {
+    setHomeSchoolId(id);
+    if (assignmentMode === 'SELF') {
+      setCenterSchoolId(id);
+    } else if (centerSchoolId && String(centerSchoolId) === String(id)) {
+      setCenterSchoolId('');
+    }
+  };
+
+  const handleModeChange = (mode) => {
+    setAssignmentMode(mode);
+    if (mode === 'SELF') {
+      if (homeSchoolId) setCenterSchoolId(homeSchoolId);
+    } else {
+      if (centerSchoolId && homeSchoolId && String(centerSchoolId) === String(homeSchoolId)) {
+        setCenterSchoolId('');
+      }
+    }
+  };
+
   const save = async () => {
-    if (!homeSchoolId || !centerSchoolId) { showToast('Select both schools','error'); return; }
-    if (String(homeSchoolId) === String(centerSchoolId)) { showToast('Home and center cannot be the same school','error'); return; }
+    if (!homeSchoolId) { showToast('Please select a Home School', 'error'); return; }
+    
+    const targetCenterId = (assignmentMode === 'SELF') ? homeSchoolId : centerSchoolId;
+    if (!targetCenterId) { showToast('Please select an Examination Center School', 'error'); return; }
+
+    const isSelf = String(homeSchoolId) === String(targetCenterId);
+    if (isSelf && assignmentMode !== 'SELF') {
+      showToast('Home and Center cannot be the same in External Center mode. Switch to Self-Center mode if intended.', 'error');
+      return;
+    }
+
     setLoading(true);
     try {
       if (editId) { await api(`/centers/${editId}`, { method:'DELETE' }); }
-      await api('/centers/assign', { method:'POST', body: JSON.stringify({ homeSchoolId, centerSchoolId }) });
-      showToast(editId ? 'Assignment updated! ✓' : 'Center assigned! ✓','success');
+      await api('/centers/assign', {
+        method:'POST',
+        body: JSON.stringify({
+          homeSchoolId,
+          centerSchoolId: targetCenterId,
+          allowSelfCenter: isSelf
+        })
+      });
+      showToast(editId ? 'Assignment updated! ✓' : (isSelf ? 'Self-Center assigned! ✓' : 'External Center assigned! ✓'), 'success');
       setHomeSchoolId(''); setCenterSchoolId(''); setEditId(null); setShowManualForm(false);
       load();
     } catch(e) { showToast(e.message,'error'); }
@@ -2253,12 +2349,14 @@ export function CenterManagement() {
     setEditId(a._id);
     setHomeSchoolId(String(a.homeSchool.id));
     setCenterSchoolId(String(a.centerSchool.id));
+    const isSelf = String(a.homeSchool.id) === String(a.centerSchool.id);
+    setAssignmentMode(isSelf ? 'SELF' : 'EXTERNAL');
     setShowManualForm(true);
     window.scrollTo({ top:0, behavior:'smooth' });
   };
 
   const remove = async (id) => {
-    try { await api(`/centers/${id}`, { method:'DELETE' }); showToast('Removed','success'); load(); }
+    try { await api(`/centers/${id}`, { method:'DELETE' }); showToast('Assignment removed ✓','success'); load(); }
     catch(e) { showToast(e.message,'error'); }
     setConfirmDelete(null);
   };
@@ -2268,14 +2366,18 @@ export function CenterManagement() {
       showToast('No center assignments to export', 'error');
       return;
     }
-    const headers = ['Home School Name', 'Home School Code', 'Center School Name', 'Center School Code', 'Assigned Date'];
-    const rows = assignments.map(a => [
-      `"${a.homeSchool?.name || ''}"`,
-      `"${a.homeSchool?.schoolId || ''}"`,
-      `"${a.centerSchool?.name || ''}"`,
-      `"${a.centerSchool?.schoolId || ''}"`,
-      `"${a.createdAt ? new Date(a.createdAt).toLocaleDateString() : ''}"`
-    ]);
+    const headers = ['Home School Name', 'Home School Code', 'Center School Name', 'Center School Code', 'Allocation Type', 'Assigned Date'];
+    const rows = assignments.map(a => {
+      const isSelf = (a.homeSchool?.id === a.centerSchool?.id) || a.isSelfCenter;
+      return [
+        `"${a.homeSchool?.name || ''}"`,
+        `"${a.homeSchool?.schoolId || ''}"`,
+        `"${a.centerSchool?.name || ''}"`,
+        `"${a.centerSchool?.schoolId || ''}"`,
+        `"${isSelf ? 'Self-Center (Same School)' : 'External Center (Different School)'}"`,
+        `"${a.createdAt ? new Date(a.createdAt).toLocaleDateString() : ''}"`
+      ];
+    });
     const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -2288,8 +2390,22 @@ export function CenterManagement() {
     showToast('Center assignments exported to CSV! ✓', 'success');
   };
 
-  const filteredAssignments = assignments.filter(a => {
-    const q = searchQuery.toLowerCase().trim();
+  // Compute counts
+  const externalAssignments = assignments.filter(a => (a.homeSchool?.id !== a.centerSchool?.id) && !a.isSelfCenter);
+  const selfAssignments = assignments.filter(a => (a.homeSchool?.id === a.centerSchool?.id) || a.isSelfCenter);
+  
+  // Unassigned schools: registered schools not yet in assignments as a homeSchool
+  const assignedHomeSchoolIdSet = new Set(assignments.map(a => String(a.homeSchool?.id)));
+  const unassignedSchools = schools.filter(s => !assignedHomeSchoolIdSet.has(String(s.id)));
+
+  // Filter based on active tab
+  let displayedAssignments = assignments;
+  if (activeTab === 'EXTERNAL') displayedAssignments = externalAssignments;
+  else if (activeTab === 'SELF') displayedAssignments = selfAssignments;
+
+  // Search filter
+  const q = searchQuery.toLowerCase().trim();
+  const filteredAssignments = displayedAssignments.filter(a => {
     if (!q) return true;
     return (
       (a.homeSchool?.name || '').toLowerCase().includes(q) ||
@@ -2299,13 +2415,22 @@ export function CenterManagement() {
     );
   });
 
+  const filteredUnassigned = unassignedSchools.filter(s => {
+    if (!q) return true;
+    return (
+      (s.name || '').toLowerCase().includes(q) ||
+      (s.school_id || '').toLowerCase().includes(q) ||
+      (s.district || '').toLowerCase().includes(q)
+    );
+  });
+
   return (
     <Page>
       <Toast />
       <PageHeader title="Examination Centers" icon="📍" backPath="/admin" />
       <div className="page-content">
         <div style={{ background:'#e0e8ff', borderRadius:10, padding:'10px 14px', marginBottom:14, fontSize:11, color:'#0a1f6b', fontWeight:600 }}>
-          ℹ A home school can only have ONE center. Multiple home schools can share the same center. You can assign centers manually or bulk upload via CSV/Excel.
+          ℹ A home school can be assigned to an <strong>External Center</strong> (different school/college) or designated as a <strong>Self-Center</strong> (students sit at their own campus).
         </div>
 
         {/* Action Header */}
@@ -2344,68 +2469,254 @@ export function CenterManagement() {
 
         {/* Manual Assign / Edit Form */}
         {(showManualForm || editId) && (
-          <div style={{ background:'#fff', borderRadius:14, padding:16, border: editId ? '2px solid #d97706' : '1px solid var(--gray-100)', marginBottom:18 }}>
-            <div style={{ fontWeight:700, fontSize:13, marginBottom:12, color: editId ? '#d97706' : 'var(--gray-900)' }}>
-              {editId ? '✏️ Edit Assignment' : '+ Assign Center (Manual)'}
+          <div style={{ background:'#fff', borderRadius:14, padding:18, border: editId ? '2px solid #d97706' : '1px solid #c7d2fe', marginBottom:18, boxShadow:'0 4px 16px rgba(10,31,107,0.06)' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
+              <div style={{ fontWeight:800, fontSize:14, color: editId ? '#d97706' : '#0a1f6b' }}>
+                {editId ? '✏️ Edit Center Allocation' : '+ Assign Examination Center'}
+              </div>
+              <button onClick={() => { setShowManualForm(false); setEditId(null); }} style={{ background:'none', border:'none', fontSize:18, cursor:'pointer', color:'var(--gray-400)' }}>✕</button>
             </div>
+
+            {/* Policy Mode Selector: External Center vs Self-Center */}
+            <div style={{ marginBottom:14 }}>
+              <label style={{ fontSize:11, fontWeight:700, color:'var(--gray-700)', display:'block', marginBottom:6 }}>
+                Allocation Mode <span className="req-star">*</span>
+              </label>
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                <div
+                  onClick={() => handleModeChange('EXTERNAL')}
+                  style={{
+                    border: assignmentMode === 'EXTERNAL' ? '2px solid #2563eb' : '1px solid var(--gray-200)',
+                    background: assignmentMode === 'EXTERNAL' ? '#eff6ff' : '#fff',
+                    borderRadius:10, padding:'10px 12px', cursor:'pointer', transition:'all .15s'
+                  }}
+                >
+                  <div style={{ display:'flex', alignItems:'center', gap:8, fontWeight:700, fontSize:12, color: assignmentMode === 'EXTERNAL' ? '#1e40af' : '#334155' }}>
+                    <span>🏢</span>
+                    <span>External Center</span>
+                  </div>
+                  <div style={{ fontSize:10, color:'var(--gray-500)', marginTop:4 }}>
+                    Students sit examinations in a <strong>different school / college</strong>.
+                  </div>
+                </div>
+
+                <div
+                  onClick={() => handleModeChange('SELF')}
+                  style={{
+                    border: assignmentMode === 'SELF' ? '2px solid #d97706' : '1px solid var(--gray-200)',
+                    background: assignmentMode === 'SELF' ? '#fffbeb' : '#fff',
+                    borderRadius:10, padding:'10px 12px', cursor:'pointer', transition:'all .15s'
+                  }}
+                >
+                  <div style={{ display:'flex', alignItems:'center', gap:8, fontWeight:700, fontSize:12, color: assignmentMode === 'SELF' ? '#92400e' : '#334155' }}>
+                    <span>🏫</span>
+                    <span>Self-Center</span>
+                  </div>
+                  <div style={{ fontSize:10, color:'var(--gray-500)', marginTop:4 }}>
+                    Students sit examinations in their <strong>own home school / college campus</strong>.
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="input-group">
-              <label>Home School * <span style={{ fontSize:10, color:'var(--gray-400)' }}>(students from this school)</span></label>
-              <SearchableSelect placeholder="Search school..." options={availableHomeSchools.map(s=>({ value:s.id, label:`${s.name} (${s.school_id})` }))} value={homeSchoolId} onChange={setHomeSchoolId} />
+              <label>Home School / College <span className="req-star">*</span> <span style={{ fontSize:10, color:'var(--gray-400)' }}>(students originating from this institution)</span></label>
+              <SearchableSelect
+                placeholder="Search home school / college..."
+                options={(editId ? schools : availableHomeSchools).map(s=>({ value:s.id, label:`${s.name} (${s.school_id})` }))}
+                value={homeSchoolId}
+                onChange={handleHomeSchoolChange}
+              />
             </div>
-            <div className="input-group">
-              <label>Examination Center * <span style={{ fontSize:10, color:'var(--gray-400)' }}>(where exam is held)</span></label>
-              <SearchableSelect placeholder="Search center..." options={schools.map(s=>({ value:s.id, label:`${s.name} (${s.school_id})` }))} value={centerSchoolId} onChange={setCenterSchoolId} />
-            </div>
-            <div style={{ display:'flex', gap:8 }}>
-              <button className="btn btn-primary btn-sm" onClick={save} disabled={loading}>{loading ? 'Saving…' : editId ? '✓ Update' : 'Assign Center'}</button>
-              {editId && <button className="btn btn-ghost btn-sm" onClick={()=>{ setEditId(null); setHomeSchoolId(''); setCenterSchoolId(''); }}>Cancel</button>}
+
+            {assignmentMode === 'EXTERNAL' ? (
+              <div className="input-group">
+                <label>Examination Center <span className="req-star">*</span> <span style={{ fontSize:10, color:'var(--gray-400)' }}>(different campus where exam is held)</span></label>
+                <SearchableSelect
+                  placeholder="Search exam center school / college..."
+                  options={availableCenterSchools.map(s=>({ value:s.id, label:`📍 ${s.name} (${s.school_id})` }))}
+                  value={centerSchoolId}
+                  onChange={setCenterSchoolId}
+                />
+              </div>
+            ) : (
+              <div style={{ background:'#fef3c7', border:'1px solid #fde68a', borderRadius:10, padding:'10px 14px', marginBottom:12, fontSize:11, color:'#92400e' }}>
+                🏫 <strong>Self-Center Mode Active:</strong> Students from <strong>{schools.find(s=>String(s.id)===String(homeSchoolId))?.name || 'the selected school'}</strong> will sit examinations at their own campus.
+              </div>
+            )}
+
+            <div style={{ display:'flex', gap:8, marginTop:10 }}>
+              <button className="btn btn-primary btn-sm" onClick={save} disabled={loading}>
+                {loading ? 'Saving…' : editId ? '✓ Update Allocation' : (assignmentMode === 'SELF' ? 'Assign as Self-Center' : 'Assign to External Center')}
+              </button>
+              <button className="btn btn-ghost btn-sm" onClick={()=>{ setShowManualForm(false); setEditId(null); setHomeSchoolId(''); setCenterSchoolId(''); }}>
+                Cancel
+              </button>
             </div>
           </div>
         )}
 
-        {/* Search Bar */}
-        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-          <div style={{ fontWeight:700, fontSize:13 }}>
-            Current Center Allocations ({filteredAssignments.length}{filteredAssignments.length !== assignments.length ? ` of ${assignments.length}` : ''})
+        {/* Filter Tabs Bar (External vs Self vs Unassigned) */}
+        <div style={{ display:'flex', gap:8, marginBottom:14, borderBottom:'1px solid var(--gray-200)', paddingBottom:8, flexWrap:'wrap', alignItems:'center', justifyContent:'space-between' }}>
+          <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+            <button
+              onClick={() => setActiveTab('ALL')}
+              style={{
+                padding:'6px 12px', borderRadius:8, fontSize:12, fontWeight:700, border:'none', cursor:'pointer',
+                background: activeTab === 'ALL' ? '#0a1f6b' : '#f1f5f9',
+                color: activeTab === 'ALL' ? '#fff' : '#475569'
+              }}
+            >
+              All Assigned ({assignments.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('EXTERNAL')}
+              style={{
+                padding:'6px 12px', borderRadius:8, fontSize:12, fontWeight:700, border:'none', cursor:'pointer',
+                background: activeTab === 'EXTERNAL' ? '#2563eb' : '#eff6ff',
+                color: activeTab === 'EXTERNAL' ? '#fff' : '#1e40af'
+              }}
+            >
+              🏢 External Centers ({externalAssignments.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('SELF')}
+              style={{
+                padding:'6px 12px', borderRadius:8, fontSize:12, fontWeight:700, border:'none', cursor:'pointer',
+                background: activeTab === 'SELF' ? '#d97706' : '#fffbeb',
+                color: activeTab === 'SELF' ? '#fff' : '#92400e'
+              }}
+            >
+              🏫 Self-Centers ({selfAssignments.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('UNASSIGNED')}
+              style={{
+                padding:'6px 12px', borderRadius:8, fontSize:12, fontWeight:700, border:'none', cursor:'pointer',
+                background: activeTab === 'UNASSIGNED' ? '#dc2626' : '#fef2f2',
+                color: activeTab === 'UNASSIGNED' ? '#fff' : '#b91c1c'
+              }}
+            >
+              ⚠️ Unassigned Schools ({unassignedSchools.length})
+            </button>
           </div>
+
           <input
             type="text"
             className="input-field"
-            placeholder="🔍 Search school or center..."
+            placeholder="🔍 Filter list..."
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            style={{ maxWidth:240, padding:'6px 10px', fontSize:12 }}
+            style={{ maxWidth:220, padding:'6px 10px', fontSize:12, margin:0 }}
           />
         </div>
 
-        {/* List */}
-        <div className="wide-grid">
-          {filteredAssignments.length===0 && (
-            <div style={{ textAlign:'center', color:'var(--gray-400)', padding:30 }}>
-              {searchQuery ? 'No matching assignments found' : 'No center assignments yet. Upload a CSV file or assign manually.'}
+        {/* UNASSIGNED TAB VIEW */}
+        {activeTab === 'UNASSIGNED' ? (
+          <div>
+            <div style={{ fontSize:11, color:'var(--gray-500)', marginBottom:10, fontWeight:600 }}>
+              {filteredUnassigned.length} school{filteredUnassigned.length !== 1 ? 's' : ''} have not been assigned to any center yet.
             </div>
-          )}
-          {filteredAssignments.map(a=>(
-            <div key={a._id} className="center-card" style={{ border: editId===a._id ? '2px solid #d97706' : '1px solid var(--gray-100)' }}>
-              <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
-                <div style={{ flex:1 }}>
-                  <div style={{ fontSize:10, color:'var(--gray-400)', fontWeight:600, textTransform:'uppercase' }}>Home School</div>
-                  <div style={{ fontSize:13, fontWeight:700, marginBottom:6 }}>
-                    {a.homeSchool.name} <span style={{ color:'var(--gray-400)', fontWeight:400 }}>({a.homeSchool.schoolId})</span>
-                  </div>
-                  <div style={{ fontSize:10, color:'var(--gray-400)' }}>↓ exams conducted at</div>
-                  <div style={{ fontSize:10, color:'var(--gray-400)', fontWeight:600, textTransform:'uppercase', marginTop:6 }}>Examination Center</div>
-                  <div style={{ fontSize:13, fontWeight:800, color:'#0a1f6b' }}>📍 {a.centerSchool.name}</div>
-                  <div style={{ fontSize:10, color:'var(--gray-400)' }}>Center Code: {a.centerSchool.schoolId}</div>
-                </div>
-                <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
-                  <button className="btn btn-ghost btn-sm" onClick={()=>startEdit(a)}>✏️ Edit</button>
-                  <button className="btn btn-red btn-sm" onClick={()=>setConfirmDelete(a._id)}>🗑 Remove</button>
-                </div>
+            {filteredUnassigned.length === 0 ? (
+              <div style={{ textAlign:'center', color:'#16a34a', padding:40, background:'#f0fdf4', borderRadius:12, border:'1px solid #bbf7d0' }}>
+                🎉 All registered schools have been assigned to an examination center!
               </div>
-            </div>
-          ))}
-        </div>
+            ) : (
+              <div className="wide-grid">
+                {filteredUnassigned.map(s => (
+                  <div key={s.id} className="center-card" style={{ border:'1px solid #fecaca', background:'#fff' }}>
+                    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
+                      <div style={{ flex:1 }}>
+                        <span className="badge badge-red" style={{ fontSize:9, marginBottom:4, display:'inline-block' }}>Unassigned</span>
+                        <div style={{ fontSize:13, fontWeight:700, color:'#0f172a' }}>{s.name}</div>
+                        <div style={{ fontSize:10, color:'var(--gray-500)', marginTop:2 }}>ID: {s.school_id} · District: {s.district || '—'}</div>
+                        {s.principal_name && <div style={{ fontSize:10, color:'var(--gray-400)', marginTop:2 }}>Principal: {s.principal_name}</div>}
+                      </div>
+                      <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                        <button
+                          className="btn btn-primary btn-sm"
+                          style={{ fontSize:10, padding:'4px 8px' }}
+                          onClick={() => {
+                            setHomeSchoolId(String(s.id));
+                            setAssignmentMode('EXTERNAL');
+                            setShowManualForm(true);
+                            window.scrollTo({ top:0, behavior:'smooth' });
+                          }}
+                        >
+                          + Assign External
+                        </button>
+                        <button
+                          className="btn btn-ghost btn-sm"
+                          style={{ fontSize:10, padding:'4px 8px', background:'#fffbeb', color:'#92400e', border:'1px solid #fde68a' }}
+                          onClick={() => {
+                            setHomeSchoolId(String(s.id));
+                            setCenterSchoolId(String(s.id));
+                            setAssignmentMode('SELF');
+                            setShowManualForm(true);
+                            window.scrollTo({ top:0, behavior:'smooth' });
+                          }}
+                        >
+                          + Set Self-Center
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          /* ASSIGNED ALLOCATIONS LIST */
+          <div className="wide-grid">
+            {filteredAssignments.length === 0 && (
+              <div style={{ textAlign:'center', color:'var(--gray-400)', padding:30 }}>
+                {searchQuery ? 'No matching assignments found for this filter.' : 'No center assignments in this view.'}
+              </div>
+            )}
+            {filteredAssignments.map(a => {
+              const isSelf = (a.homeSchool?.id === a.centerSchool?.id) || a.isSelfCenter;
+              return (
+                <div key={a._id} className="center-card" style={{ border: editId === a._id ? '2px solid #d97706' : (isSelf ? '1px solid #fde68a' : '1px solid var(--gray-200)'), background: isSelf ? '#fffdf7' : '#fff' }}>
+                  <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8 }}>
+                    <div style={{ flex:1 }}>
+                      {/* Allocation Type Badge */}
+                      <div style={{ marginBottom:6 }}>
+                        {isSelf ? (
+                          <span style={{ background:'#fef3c7', color:'#92400e', padding:'2px 8px', borderRadius:6, fontSize:10, fontWeight:800, border:'1px solid #fde68a' }}>
+                            🏫 Self-Center (Same School)
+                          </span>
+                        ) : (
+                          <span style={{ background:'#e0f2fe', color:'#0369a1', padding:'2px 8px', borderRadius:6, fontSize:10, fontWeight:800, border:'1px solid #bae6fd' }}>
+                            🏢 External Center (Different School)
+                          </span>
+                        )}
+                      </div>
+
+                      <div style={{ fontSize:10, color:'var(--gray-400)', fontWeight:600, textTransform:'uppercase' }}>Home School / College</div>
+                      <div style={{ fontSize:13, fontWeight:700, marginBottom:4, color:'#0f172a' }}>
+                        {a.homeSchool.name} <span style={{ color:'var(--gray-400)', fontWeight:400 }}>({a.homeSchool.schoolId})</span>
+                      </div>
+                      
+                      <div style={{ fontSize:10, color:'var(--gray-400)', margin:'4px 0' }}>
+                        {isSelf ? '↺ students give exam on campus at' : '↓ students give exam at external center'}
+                      </div>
+                      
+                      <div style={{ fontSize:10, color:'var(--gray-400)', fontWeight:600, textTransform:'uppercase' }}>Examination Center</div>
+                      <div style={{ fontSize:13, fontWeight:800, color: isSelf ? '#b45309' : '#0a1f6b' }}>
+                        📍 {a.centerSchool.name}
+                      </div>
+                      <div style={{ fontSize:10, color:'var(--gray-400)' }}>Center Code: {a.centerSchool.schoolId}</div>
+                    </div>
+                    <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                      <button className="btn btn-ghost btn-sm" onClick={()=>startEdit(a)}>✏️ Edit</button>
+                      <button className="btn btn-red btn-sm" onClick={()=>setConfirmDelete(a._id)}>🗑 Remove</button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       <BulkImportCentersModal
@@ -3420,6 +3731,199 @@ export function PasswordResetRequests() {
         title="Reject Password Request"
         message="Are you sure you want to mark this password reset request as rejected?"
       />
+    </Page>
+  );
+}
+
+// ===== CHANGE BOARD ADMIN PASSWORD PAGE =====
+export function AdminChangePassword() {
+  const navigate = useNavigate();
+  const { api, showToast, currentUser } = useApp();
+  const [form, setForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setSuccess(false);
+
+    if (!form.currentPassword) {
+      setError('Please enter your current password.');
+      return;
+    }
+    if (!form.newPassword || form.newPassword.length < 6) {
+      setError('New password must be at least 6 characters long.');
+      return;
+    }
+    if (form.newPassword !== form.confirmPassword) {
+      setError('New password and confirmation password do not match.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await api('/auth/change-password', {
+        method: 'POST',
+        body: JSON.stringify({
+          currentPassword: form.currentPassword,
+          newPassword: form.newPassword,
+        }),
+      });
+      setLoading(false);
+      setSuccess(true);
+      setForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+      showToast(res.message || 'Password changed successfully! ✓', 'success');
+    } catch (err) {
+      setLoading(false);
+      setError(err.message || 'Failed to update password.');
+      showToast(err.message || 'Failed to update password', 'error');
+    }
+  };
+
+  return (
+    <Page>
+      <Toast />
+      <PageHeader title="Change Board Password" icon="🔑" backPath="/admin" />
+      <div className="page-content" style={{ maxWidth: 540, margin: '0 auto' }}>
+        
+        {/* Account Info Banner */}
+        <div style={{ background: '#fff', borderRadius: 14, padding: 18, border: '1px solid var(--gray-100)', marginBottom: 16, display: 'flex', alignItems: 'center', gap: 14 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 12, background: 'linear-gradient(135deg, #0a1f6b, #1d4ed8)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 20, fontWeight: 800 }}>
+            👑
+          </div>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 15, color: '#0a1f6b' }}>{currentUser?.name || 'Board Administrator'}</div>
+            <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 2 }}>
+              Username: <strong style={{ color: 'var(--gray-700)' }}>{currentUser?.username}</strong> · Role: <span className="badge badge-blue">Board Admin</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Change Password Card */}
+        <div style={{ background: '#fff', borderRadius: 14, padding: 24, border: '1px solid var(--gray-100)', boxShadow: '0 2px 12px rgba(0,0,0,0.04)' }}>
+          <div style={{ marginBottom: 18 }}>
+            <h3 style={{ fontSize: 16, fontWeight: 800, color: 'var(--gray-900)', margin: 0 }}>Update Login Password</h3>
+            <p style={{ fontSize: 12, color: 'var(--gray-500)', margin: '4px 0 0' }}>
+              Ensure your new password is strong and kept confidential to secure your administrative portal.
+            </p>
+          </div>
+
+          {error && (
+            <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 10, padding: '10px 14px', marginBottom: 16 }}>
+              <p style={{ fontSize: 12, color: '#dc2626', margin: 0, fontWeight: 600 }}>⚠️ {error}</p>
+            </div>
+          )}
+
+          {success && (
+            <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 10, padding: '12px 14px', marginBottom: 16 }}>
+              <p style={{ fontSize: 12, color: '#16a34a', margin: 0, fontWeight: 700 }}>
+                ✅ Password updated successfully! Your new password is now active for future logins.
+              </p>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Current Password */}
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--gray-700)', display: 'block', marginBottom: 6 }}>
+                Current Password <span style={{ color: 'var(--red)' }}>*</span>
+              </label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showCurrent ? 'text' : 'password'}
+                  className="input-field"
+                  placeholder="Enter your current password"
+                  value={form.currentPassword}
+                  onChange={e => setForm(f => ({ ...f, currentPassword: e.target.value }))}
+                  style={{ paddingRight: 42 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowCurrent(!showCurrent)}
+                  style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 16 }}
+                >
+                  {showCurrent ? '🙈' : '👁'}
+                </button>
+              </div>
+            </div>
+
+            {/* New Password */}
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--gray-700)', display: 'block', marginBottom: 6 }}>
+                New Password <span style={{ color: 'var(--red)' }}>*</span>
+              </label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showNew ? 'text' : 'password'}
+                  className="input-field"
+                  placeholder="Enter new password (min. 6 characters)"
+                  value={form.newPassword}
+                  onChange={e => setForm(f => ({ ...f, newPassword: e.target.value }))}
+                  style={{ paddingRight: 42 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowNew(!showNew)}
+                  style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 16 }}
+                >
+                  {showNew ? '🙈' : '👁'}
+                </button>
+              </div>
+              <div style={{ fontSize: 10, color: 'var(--gray-400)', marginTop: 4 }}>
+                Must be at least 6 characters long.
+              </div>
+            </div>
+
+            {/* Confirm New Password */}
+            <div>
+              <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--gray-700)', display: 'block', marginBottom: 6 }}>
+                Confirm New Password <span style={{ color: 'var(--red)' }}>*</span>
+              </label>
+              <div style={{ position: 'relative' }}>
+                <input
+                  type={showConfirm ? 'text' : 'password'}
+                  className="input-field"
+                  placeholder="Re-enter new password"
+                  value={form.confirmPassword}
+                  onChange={e => setForm(f => ({ ...f, confirmPassword: e.target.value }))}
+                  style={{ paddingRight: 42 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirm(!showConfirm)}
+                  style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 16 }}
+                >
+                  {showConfirm ? '🙈' : '👁'}
+                </button>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
+              <button
+                type="submit"
+                className="btn btn-primary"
+                disabled={loading}
+                style={{ flex: 1, padding: '12px 18px', fontSize: 13 }}
+              >
+                {loading ? 'Updating Password…' : '🔐 Update Password'}
+              </button>
+              <button
+                type="button"
+                className="btn btn-ghost"
+                onClick={() => navigate('/admin')}
+                style={{ padding: '12px 18px', fontSize: 13 }}
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
     </Page>
   );
 }
