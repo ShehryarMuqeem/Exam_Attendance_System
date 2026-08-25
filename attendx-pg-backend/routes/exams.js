@@ -79,15 +79,28 @@ router.get('/', protect, async (req, res) => {
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
-// POST create exam — full academic hierarchy + center, Board only
+// POST create exam — full academic hierarchy + multi-center support, Board only
 router.post('/', protect, requireRole('BoardAdmin'), async (req, res) => {
   try {
-    const { academicYear, term, shift, department, subject, class: cls, date, time, duration, roomNo, centerId, allCenters } = req.body;
+    const {
+      academicYear,
+      term,
+      shift,
+      department,
+      subject,
+      class: cls,
+      date,
+      time,
+      duration,
+      roomNo,
+      centerId,
+      centerIds,
+      centerFilter,
+      allCenters
+    } = req.body;
+
     if (!academicYear || !term || !department || !subject || !cls || !date) {
       return res.status(400).json({ message: 'Academic year, term, department, subject, class, and date are required.' });
-    }
-    if (!centerId && !allCenters) {
-      return res.status(400).json({ message: 'Center is required if not assigning to all centers.' });
     }
 
     const todayStr = new Date().toLocaleDateString('en-CA');
@@ -95,33 +108,68 @@ router.post('/', protect, requireRole('BoardAdmin'), async (req, res) => {
       return res.status(400).json({ message: '❌ Exam date cannot be in the past.' });
     }
 
-    let centerIds = [];
-    if (allCenters) {
-      const { rows: centerRows } = await pool.query('SELECT DISTINCT center_school_id FROM center_assignments');
-      centerIds = centerRows.map(r => r.center_school_id);
-      if (centerIds.length === 0 && centerId) {
-        centerIds.push(centerId);
+    let finalCenterIds = [];
+
+    if (Array.isArray(centerIds) && centerIds.length > 0) {
+      finalCenterIds = Array.from(new Set(centerIds.map(id => parseInt(id)).filter(Boolean)));
+    } else if (centerFilter === 'SCHOOLS') {
+      const { rows: centerRows } = await pool.query(
+        `SELECT DISTINCT s.id FROM schools s 
+         WHERE (s.institution_type = 'School' OR s.institution_type IS NULL)
+           AND s.id IN (SELECT center_school_id FROM center_assignments)`
+      );
+      finalCenterIds = centerRows.map(r => r.id);
+      if (finalCenterIds.length === 0) {
+        const { rows: activeSchools } = await pool.query("SELECT id FROM schools WHERE (institution_type = 'School' OR institution_type IS NULL) AND status = 'Active'");
+        finalCenterIds = activeSchools.map(r => r.id);
       }
-    } else {
-      centerIds.push(centerId);
+    } else if (centerFilter === 'COLLEGES') {
+      const { rows: centerRows } = await pool.query(
+        `SELECT DISTINCT s.id FROM schools s 
+         WHERE s.institution_type = 'College'
+           AND s.id IN (SELECT center_school_id FROM center_assignments)`
+      );
+      finalCenterIds = centerRows.map(r => r.id);
+      if (finalCenterIds.length === 0) {
+        const { rows: activeColleges } = await pool.query("SELECT id FROM schools WHERE institution_type = 'College' AND status = 'Active'");
+        finalCenterIds = activeColleges.map(r => r.id);
+      }
+    } else if (allCenters || centerFilter === 'ALL') {
+      const { rows: centerRows } = await pool.query('SELECT DISTINCT center_school_id FROM center_assignments');
+      finalCenterIds = centerRows.map(r => r.center_school_id);
+      if (finalCenterIds.length === 0) {
+        const { rows: activeAll } = await pool.query("SELECT id FROM schools WHERE status = 'Active'");
+        finalCenterIds = activeAll.map(r => r.id);
+      }
+    } else if (centerId) {
+      finalCenterIds = [parseInt(centerId)];
     }
 
-    if (centerIds.length === 0) {
-      return res.status(400).json({ message: '❌ No active exam centers found to assign exams to.' });
+    if (finalCenterIds.length === 0) {
+      return res.status(400).json({ message: '❌ No active exam centers found matching the selection.' });
     }
 
     const createdExams = [];
-    for (const cid of centerIds) {
+    for (const cid of finalCenterIds) {
       const examId = await nextExamId();
       const { rows } = await pool.query(
         `INSERT INTO exams (exam_id,academic_year,term,shift,department,subject,class,date,time,duration,room_no,center_id,created_by)
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
         [examId, academicYear, term, shift||'Morning', department, subject, cls, date, time||null, duration||null, roomNo||null, cid, req.user.id]
       );
-      createdExams.push(mapExam(rows[0]));
+      
+      const { rows: fullExam } = await pool.query(
+        `SELECT e.*, s.name as center_school_name 
+         FROM exams e 
+         LEFT JOIN schools s ON e.center_id = s.id 
+         WHERE e.id = $1`,
+        [rows[0].id]
+      );
+      createdExams.push(mapExam(fullExam[0] || rows[0]));
     }
 
-    res.status(201).json(allCenters ? createdExams : createdExams[0]);
+    const isMulti = finalCenterIds.length > 1 || allCenters || !!centerFilter || Array.isArray(centerIds);
+    res.status(201).json(isMulti ? createdExams : createdExams[0]);
   } catch (err) { res.status(500).json({ message: err.message }); }
 });
 
@@ -131,6 +179,165 @@ router.delete('/:id', protect, requireRole('BoardAdmin'), async (req, res) => {
     await pool.query('DELETE FROM exams WHERE id=$1', [req.params.id]);
     res.json({ message: 'Exam deleted' });
   } catch (err) { res.status(500).json({ message: err.message }); }
+});
+
+// POST upload & process Date Sheet (Excel / CSV) with automatic Center Assignment
+router.post('/bulk-datesheet', protect, requireRole('BoardAdmin'), async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const { dateSheet, defaultAcademicYear } = req.body;
+    if (!Array.isArray(dateSheet) || dateSheet.length === 0) {
+      return res.status(400).json({ message: 'No date sheet entries provided.' });
+    }
+
+    // Load all schools to map by ID and School Code
+    const { rows: allSchools } = await pool.query('SELECT id, name, school_id, institution_type FROM schools');
+    const schoolById = new Map();
+    const schoolByCode = new Map();
+    const schoolByName = new Map();
+    allSchools.forEach(s => {
+      schoolById.set(String(s.id), s);
+      if (s.school_id) schoolByCode.set(String(s.school_id).trim().toLowerCase(), s);
+      if (s.name) schoolByName.set(String(s.name).trim().toLowerCase(), s);
+    });
+
+    // Query active center schools
+    const { rows: centerAssignments } = await pool.query('SELECT DISTINCT center_school_id FROM center_assignments');
+    const activeCenterIdSet = new Set(centerAssignments.map(r => r.center_school_id));
+
+    const schoolCenters = allSchools.filter(s => 
+      (s.institution_type !== 'College') && (activeCenterIdSet.has(s.id) || activeCenterIdSet.size === 0)
+    ).map(s => s.id);
+
+    const collegeCenters = allSchools.filter(s => 
+      (s.institution_type === 'College') && (activeCenterIdSet.has(s.id) || activeCenterIdSet.size === 0)
+    ).map(s => s.id);
+
+    const allCenterIds = allSchools.filter(s => activeCenterIdSet.has(s.id) || activeCenterIdSet.size === 0).map(s => s.id);
+
+    const createdExams = [];
+    const skippedRows = [];
+
+    await client.query('BEGIN');
+
+    for (let i = 0; i < dateSheet.length; i++) {
+      const row = dateSheet[i];
+      const subject = (row.subject || row.paper || row.subjectName || '').trim();
+      const rawTerm = (row.term || row.level || row.class || '').trim();
+      const rawClass = (row.class || row.term || rawTerm).trim();
+      const department = (row.department || row.group || 'General').trim();
+      const shift = (row.shift || 'Morning').trim();
+      const rawDate = (row.date || row.examDate || row.exam_date || '').trim();
+      const time = (row.time || row.startTime || row.start_time || '09:00').trim();
+      const duration = parseInt(row.duration || 180);
+      const roomNo = (row.roomNo || row.room_no || '').trim();
+      const academicYear = (row.academicYear || row.academic_year || defaultAcademicYear || '2025-2026').trim();
+      const centerTarget = (row.centers || row.center || row.assignedCenters || row.centerTarget || '').trim().toLowerCase();
+
+      if (!subject) {
+        skippedRows.push({ row: i + 1, error: 'Missing Subject / Paper name' });
+        continue;
+      }
+      if (!rawDate) {
+        skippedRows.push({ row: i + 1, error: `Row "${subject}": Missing exam date` });
+        continue;
+      }
+
+      // Format date if needed (handle DD/MM/YYYY or YYYY-MM-DD)
+      let formattedDate = rawDate;
+      if (/^\d{2}\/\d{2}\/\d{4}$/.test(rawDate)) {
+        const [d, m, y] = rawDate.split('/');
+        formattedDate = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+      } else if (/^\d{4}-\d{1,2}-\d{1,2}$/.test(rawDate)) {
+        const [y, m, d] = rawDate.split('-');
+        formattedDate = `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+      }
+
+      // Resolve matching target centers for this exam entry
+      let targetCenterIds = [];
+      const isSSC = rawTerm.toLowerCase().startsWith('ssc') || rawClass.toLowerCase().startsWith('ssc') || rawClass.includes('9') || rawClass.includes('10');
+      const isHSSC = rawTerm.toLowerCase().startsWith('hssc') || rawTerm.toLowerCase().startsWith('hsc') || rawClass.toLowerCase().startsWith('hssc') || rawClass.toLowerCase().startsWith('hsc') || rawClass.includes('11') || rawClass.includes('12') || rawClass.toLowerCase().includes('inter');
+
+      if (centerTarget === 'schools' || centerTarget === 'school' || centerTarget === 'ssc') {
+        targetCenterIds = schoolCenters.length > 0 ? schoolCenters : allCenterIds;
+      } else if (centerTarget === 'colleges' || centerTarget === 'college' || centerTarget === 'hssc') {
+        targetCenterIds = collegeCenters.length > 0 ? collegeCenters : allCenterIds;
+      } else if (centerTarget === 'all' || centerTarget === 'all centers' || centerTarget === 'all active centers') {
+        targetCenterIds = allCenterIds;
+      } else if (centerTarget && centerTarget !== 'auto' && centerTarget !== 'default') {
+        // Comma separated codes or names e.g. "SCH-001, SCH-002"
+        const parts = centerTarget.split(',').map(p => p.trim()).filter(Boolean);
+        const resolved = [];
+        for (const p of parts) {
+          const s = schoolByCode.get(p.toLowerCase()) || schoolById.get(p) || schoolByName.get(p.toLowerCase());
+          if (s) resolved.push(s.id);
+        }
+        targetCenterIds = resolved.length > 0 ? resolved : (isHSSC ? collegeCenters : schoolCenters);
+      } else {
+        // Smart automatic assignment: SSC -> Schools, HSSC -> Colleges
+        if (isHSSC) {
+          targetCenterIds = collegeCenters.length > 0 ? collegeCenters : allCenterIds;
+        } else {
+          targetCenterIds = schoolCenters.length > 0 ? schoolCenters : allCenterIds;
+        }
+      }
+
+      if (targetCenterIds.length === 0) {
+        targetCenterIds = allCenterIds;
+      }
+
+      if (targetCenterIds.length === 0) {
+        skippedRows.push({ row: i + 1, error: `Row "${subject}": No active centers available to assign` });
+        continue;
+      }
+
+      // Insert an exam for each target center
+      for (const cid of targetCenterIds) {
+        const examId = await nextExamId();
+        const { rows: inserted } = await client.query(
+          `INSERT INTO exams (exam_id,academic_year,term,shift,department,subject,class,date,time,duration,room_no,center_id,created_by)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+          [
+            examId,
+            academicYear,
+            rawTerm || (isHSSC ? 'HSSC-I' : 'SSC-I'),
+            shift || 'Morning',
+            department || 'General',
+            subject,
+            rawClass || (isHSSC ? 'HSSC-I' : 'SSC-I'),
+            formattedDate,
+            time || '09:00',
+            duration || 180,
+            roomNo || null,
+            cid,
+            req.user.id
+          ]
+        );
+        createdExams.push(mapExam(inserted[0]));
+      }
+    }
+
+    if (createdExams.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({
+        message: 'No exam schedules could be created from the uploaded date sheet. Please check the dates and subjects.',
+        skippedRows
+      });
+    }
+
+    await client.query('COMMIT');
+    res.status(201).json({
+      message: `Date sheet imported successfully! Created ${createdExams.length} center exam schedules from ${dateSheet.length} date sheet entries.`,
+      count: createdExams.length,
+      entriesProcessed: dateSheet.length,
+      skippedRows: skippedRows.length > 0 ? skippedRows : undefined
+    });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    res.status(500).json({ message: err.message });
+  } finally {
+    client.release();
+  }
 });
 
 // GET available blocks for the School Admin's center

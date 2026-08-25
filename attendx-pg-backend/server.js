@@ -217,6 +217,7 @@ async function initDB() {
         `ALTER TABLE schools ADD COLUMN IF NOT EXISTS district VARCHAR(100) NOT NULL DEFAULT ''`,
         `ALTER TABLE schools ADD COLUMN IF NOT EXISTS principal_name VARCHAR(255)`,
         `ALTER TABLE schools ADD COLUMN IF NOT EXISTS principal_cnic VARCHAR(50)`,
+        `ALTER TABLE schools ADD COLUMN IF NOT EXISTS institution_type VARCHAR(20) DEFAULT 'School'`,
         `ALTER TABLE users ADD COLUMN IF NOT EXISTS academic_year VARCHAR(30)`,
         `ALTER TABLE users ADD COLUMN IF NOT EXISTS cnic VARCHAR(50)`,
         `ALTER TABLE users ADD COLUMN IF NOT EXISTS plain_password VARCHAR(100)`,
@@ -242,6 +243,16 @@ async function initDB() {
         try { await client.query(sql); }
         catch(e) { console.log('Migration note:', e.message); }
       }
+
+      // Auto-classify existing institutions with College keywords
+      try {
+        await client.query(`
+          UPDATE schools 
+          SET institution_type = 'College' 
+          WHERE (institution_type IS NULL OR institution_type = 'School') 
+            AND (name ILIKE '%college%' OR name ILIKE '%degree%' OR name ILIKE '%inter%' OR name ILIKE '%higher sec%')
+        `);
+      } catch(e) { console.log('Classification note:', e.message); }
 
       // ===== Indexes AFTER columns exist =====
       const indexes = [

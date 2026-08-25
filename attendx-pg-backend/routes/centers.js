@@ -143,8 +143,8 @@ router.get('/', protect, requireRole('BoardAdmin'), async (req, res) => {
   try {
     const { rows } = await pool.query(`
       SELECT ca.id, ca.created_at,
-        hs.id as home_school_id, hs.name as home_school_name, hs.school_id as home_school_code,
-        cs.id as center_school_id, cs.name as center_school_name, cs.school_id as center_school_code
+        hs.id as home_school_id, hs.name as home_school_name, hs.school_id as home_school_code, hs.institution_type as home_institution_type,
+        cs.id as center_school_id, cs.name as center_school_name, cs.school_id as center_school_code, cs.institution_type as center_institution_type
       FROM center_assignments ca
       JOIN schools hs ON ca.home_school_id = hs.id
       JOIN schools cs ON ca.center_school_id = cs.id
@@ -152,8 +152,8 @@ router.get('/', protect, requireRole('BoardAdmin'), async (req, res) => {
     `);
     res.json(rows.map(r => ({
       _id: r.id,
-      homeSchool: { id: r.home_school_id, name: r.home_school_name, schoolId: r.home_school_code },
-      centerSchool: { id: r.center_school_id, name: r.center_school_name, schoolId: r.center_school_code },
+      homeSchool: { id: r.home_school_id, name: r.home_school_name, schoolId: r.home_school_code, institutionType: r.home_institution_type || 'School' },
+      centerSchool: { id: r.center_school_id, name: r.center_school_name, schoolId: r.center_school_code, institutionType: r.center_institution_type || 'School' },
       isSelfCenter: (r.home_school_id === r.center_school_id),
       createdAt: r.created_at,
     })));

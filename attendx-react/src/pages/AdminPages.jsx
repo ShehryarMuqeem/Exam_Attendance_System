@@ -165,6 +165,7 @@ function EditSchoolModal({ open, onClose, school, onSaved, showToast, api }) {
   const [form, setForm] = useState({
     name: '',
     district: '',
+    institutionType: 'School',
     principalName: '',
     principalCnic: '',
     address: '',
@@ -179,6 +180,7 @@ function EditSchoolModal({ open, onClose, school, onSaved, showToast, api }) {
       setForm({
         name: school.name || '',
         district: school.district || '',
+        institutionType: school.institution_type || 'School',
         principalName: school.principal_name || school.admin_name || '',
         principalCnic: (school.principal_cnic || school.admin_cnic || '').replace(/[^0-9]/g, ''),
         address: school.address || '',
@@ -228,17 +230,24 @@ function EditSchoolModal({ open, onClose, school, onSaved, showToast, api }) {
 
         <form onSubmit={handleSave} style={{ display:'flex', flexDirection:'column', gap:12 }}>
           <div style={{ background:'#f8fafc', padding:14, borderRadius:12, border:'1px solid #e2e8f0' }}>
-            <div style={{ fontSize:12, fontWeight:700, color:'#0a1f6b', marginBottom:10 }}>🏫 School Information</div>
+            <div style={{ fontSize:12, fontWeight:700, color:'#0a1f6b', marginBottom:10 }}>🏫 Institution Information</div>
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
               <div className="input-group" style={{ gridColumn:'1 / -1' }}>
-                <label style={{ fontSize:11, fontWeight:700 }}>School Name *</label>
+                <label style={{ fontSize:11, fontWeight:700 }}>Institution Name *</label>
                 <input className="input-field" value={form.name} onChange={e => set('name', e.target.value)} required />
+              </div>
+              <div className="input-group">
+                <label style={{ fontSize:11, fontWeight:700 }}>Category / Level *</label>
+                <select className="input-field" value={form.institutionType} onChange={e => set('institutionType', e.target.value)}>
+                  <option value="School">🏫 School (SSC / Grade 9–10)</option>
+                  <option value="College">🏛️ College (HSSC / Grade 11–12)</option>
+                </select>
               </div>
               <div className="input-group">
                 <label style={{ fontSize:11, fontWeight:700 }}>District *</label>
                 <input className="input-field" value={form.district} onChange={e => set('district', e.target.value)} required />
               </div>
-              <div className="input-group">
+              <div className="input-group" style={{ gridColumn:'1 / -1' }}>
                 <label style={{ fontSize:11, fontWeight:700 }}>Status</label>
                 <select className="input-field" value={form.status} onChange={e => set('status', e.target.value)}>
                   <option value="Active">Active</option>
@@ -588,6 +597,7 @@ export function SchoolManagement() {
   const { api, showToast } = useApp();
   const [schools, setSchools] = useState([]);
   const [search, setSearch] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('ALL'); // 'ALL' | 'SCHOOL' | 'COLLEGE'
   const [confirmDelete, setConfirmDelete] = useState(null);
   const [editingSchool, setEditingSchool] = useState(null);
   const [showBulkModal, setShowBulkModal] = useState(false);
@@ -601,6 +611,9 @@ export function SchoolManagement() {
   useEffect(() => { load(); }, [load]);
 
   const filtered = schools.filter(s => {
+    const isCollege = s.institution_type === 'College';
+    if (categoryFilter === 'SCHOOL' && isCollege) return false;
+    if (categoryFilter === 'COLLEGE' && !isCollege) return false;
     if (!search) return true;
     const q = search.toLowerCase();
     return (
@@ -612,6 +625,9 @@ export function SchoolManagement() {
       (s.admin_username && s.admin_username.toLowerCase().includes(q))
     );
   });
+
+  const schoolCount = schools.filter(s => s.institution_type !== 'College').length;
+  const collegeCount = schools.filter(s => s.institution_type === 'College').length;
 
   const handleDelete = async (id) => {
     try {
@@ -659,8 +675,48 @@ export function SchoolManagement() {
 
         <SearchBar value={search} onChange={setSearch} placeholder="Search by School/College Name, ID, District, Principal, or CNIC…" />
 
-        <div style={{ fontSize:11, color:'var(--gray-500)', margin:'10px 0 14px', fontWeight:600 }}>
-          {filtered.length} institution{filtered.length !== 1 ? 's' : ''} (schools & colleges) registered
+        {/* Category Filter Tabs */}
+        <div style={{ display:'flex', gap:8, marginTop:12, marginBottom:14, flexWrap:'wrap' }}>
+          <button
+            type="button"
+            onClick={() => setCategoryFilter('ALL')}
+            style={{
+              padding:'6px 14px', borderRadius:20, fontSize:12, fontWeight:700, cursor:'pointer', border:'none',
+              background: categoryFilter === 'ALL' ? '#0a1f6b' : '#e2e8f0',
+              color: categoryFilter === 'ALL' ? '#fff' : '#475569',
+              transition:'all .15s'
+            }}
+          >
+            🌐 All Institutions ({schools.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setCategoryFilter('SCHOOL')}
+            style={{
+              padding:'6px 14px', borderRadius:20, fontSize:12, fontWeight:700, cursor:'pointer', border:'none',
+              background: categoryFilter === 'SCHOOL' ? '#0284c7' : '#e0f2fe',
+              color: categoryFilter === 'SCHOOL' ? '#fff' : '#0369a1',
+              transition:'all .15s'
+            }}
+          >
+            🏫 Schools / SSC ({schoolCount})
+          </button>
+          <button
+            type="button"
+            onClick={() => setCategoryFilter('COLLEGE')}
+            style={{
+              padding:'6px 14px', borderRadius:20, fontSize:12, fontWeight:700, cursor:'pointer', border:'none',
+              background: categoryFilter === 'COLLEGE' ? '#d97706' : '#fef3c7',
+              color: categoryFilter === 'COLLEGE' ? '#fff' : '#92400e',
+              transition:'all .15s'
+            }}
+          >
+            🏛️ Colleges / HSSC ({collegeCount})
+          </button>
+        </div>
+
+        <div style={{ fontSize:11, color:'var(--gray-500)', margin:'0 0 14px', fontWeight:600 }}>
+          Showing {filtered.length} of {schools.length} registered institutions
         </div>
 
         <div className="wide-grid">
@@ -673,6 +729,15 @@ export function SchoolManagement() {
                     <span style={{ background:'#f1f5f9', color:'#475569', borderRadius:6, padding:'2px 8px', fontSize:10, fontWeight:700, border:'1px solid #cbd5e1' }}>
                       {s.school_id}
                     </span>
+                    {s.institution_type === 'College' ? (
+                      <span style={{ background:'#fef3c7', color:'#92400e', borderRadius:6, padding:'2px 8px', fontSize:10, fontWeight:700, border:'1px solid #fde68a' }}>
+                        🏛️ College (HSSC)
+                      </span>
+                    ) : (
+                      <span style={{ background:'#e0f2fe', color:'#0369a1', borderRadius:6, padding:'2px 8px', fontSize:10, fontWeight:700, border:'1px solid #bae6fd' }}>
+                        🏫 School (SSC)
+                      </span>
+                    )}
                     {statusBadge(s.status)}
                   </div>
 
@@ -787,6 +852,7 @@ export function AddSchool() {
   const [form, setForm] = useState({
     name: '',
     district: '',
+    institutionType: 'School',
     principalName: '',
     principalCnic: '',
     address: '',
@@ -822,7 +888,7 @@ export function AddSchool() {
     setLoading(true);
     try {
       const res = await api('/schools', { method:'POST', body: JSON.stringify(form) });
-      showToast('🎉 School registered successfully!', 'success');
+      showToast('🎉 Institution registered successfully!', 'success');
       setCreatedInfo({
         school: res.school,
         username: res.adminUser?.username,
@@ -837,7 +903,7 @@ export function AddSchool() {
 
   const copyCreds = () => {
     if (!createdInfo) return;
-    navigator.clipboard.writeText(`School: ${createdInfo.school?.name} (${createdInfo.school?.school_id})\nPrincipal: ${createdInfo.principal}\nUsername: ${createdInfo.username}\nPassword: ${createdInfo.password}`);
+    navigator.clipboard.writeText(`Institution: ${createdInfo.school?.name} (${createdInfo.school?.school_id})\nType: ${form.institutionType}\nPrincipal: ${createdInfo.principal}\nUsername: ${createdInfo.username}\nPassword: ${createdInfo.password}`);
     showToast('Credentials copied to clipboard! 📋', 'success');
   };
 
@@ -857,7 +923,10 @@ export function AddSchool() {
 
             <div style={{ background:'#f0fdf4', border:'1px solid #86efac', borderRadius:12, padding:16, marginBottom:18 }}>
               <div style={{ fontSize:13, fontWeight:800, color:'#166534', marginBottom:8 }}>
-                🏫 {createdInfo.school?.name} ({createdInfo.school?.school_id})
+                {form.institutionType === 'College' ? '🏛️' : '🏫'} {createdInfo.school?.name} ({createdInfo.school?.school_id})
+                <span style={{ marginLeft:8, fontSize:11, padding:'2px 8px', borderRadius:6, background:'#dcfce7', color:'#15803d' }}>
+                  {form.institutionType === 'College' ? 'College (HSSC)' : 'School (SSC)'}
+                </span>
               </div>
               <div style={{ fontSize:12, color:'#334155', marginBottom:4 }}>
                 <strong>Principal:</strong> {createdInfo.principal}
@@ -896,15 +965,25 @@ export function AddSchool() {
                 />
                 {errors.name && <div className="field-error-msg">⚠️ {errors.name}</div>}
               </div>
-              <div className={`input-group ${errors.district ? 'has-error' : ''}`}>
-                <label>District <span className="req-star">*</span></label>
-                <input 
-                  className={`input-field ${errors.district ? 'input-error' : ''}`}
-                  placeholder="e.g. Karachi East, Lahore Central, Faisalabad" 
-                  value={form.district} 
-                  onChange={e => set('district', e.target.value)} 
-                />
-                {errors.district && <div className="field-error-msg">⚠️ {errors.district}</div>}
+
+              <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10 }}>
+                <div className="input-group">
+                  <label>Institution Category <span className="req-star">*</span></label>
+                  <select className="input-field" value={form.institutionType} onChange={e => set('institutionType', e.target.value)}>
+                    <option value="School">🏫 School (SSC / Grade 9–10)</option>
+                    <option value="College">🏛️ College (HSSC / Grade 11–12)</option>
+                  </select>
+                </div>
+                <div className={`input-group ${errors.district ? 'has-error' : ''}`}>
+                  <label>District <span className="req-star">*</span></label>
+                  <input 
+                    className={`input-field ${errors.district ? 'input-error' : ''}`}
+                    placeholder="e.g. Karachi East, Lahore Central, Faisalabad" 
+                    value={form.district} 
+                    onChange={e => set('district', e.target.value)} 
+                  />
+                  {errors.district && <div className="field-error-msg">⚠️ {errors.district}</div>}
+                </div>
               </div>
               <div className="input-group">
                 <label>Campus Address</label>
@@ -1283,11 +1362,298 @@ export function EditUser() {
   );
 }
 
+// ===== DATE SHEET SAMPLE & UPLOAD MODAL =====
+function downloadDateSheetSampleCSV() {
+  const headers = "date,time,shift,term,class,department,subject,duration_mins,assigned_centers\n";
+  const row1 = "2026-05-10,09:00,Morning,SSC-II,SSC-II,Science,Mathematics,180,Schools\n";
+  const row2 = "2026-05-12,09:00,Morning,SSC-II,SSC-II,Science,Physics,180,Schools\n";
+  const row3 = "2026-05-15,14:00,Evening,HSSC-II,HSSC-II,Pre-Engineering,Mathematics,180,Colleges\n";
+  const row4 = "2026-05-18,09:00,Morning,HSSC-I,HSSC-I,Computer Science,Computer Science,180,Colleges\n";
+  const blob = new Blob([headers + row1 + row2 + row3 + row4], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.setAttribute("href", url);
+  link.setAttribute("download", "sample_datesheet_template.csv");
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+function UploadDateSheetModal({ open, onClose, onImportSuccess, showToast, api, years = [] }) {
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [parsedRows, setParsedRows] = useState([]);
+  const [parsing, setParsing] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [defaultAcademicYear, setDefaultAcademicYear] = useState('2025-2026');
+  const [createdSummary, setCreatedSummary] = useState(null);
+
+  useEffect(() => {
+    if (!open) {
+      setSelectedFile(null);
+      setParsedRows([]);
+      setCreatedSummary(null);
+      setParsing(false);
+      setSubmitting(false);
+    }
+  }, [open]);
+
+  if (!open) return null;
+
+  const handleFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setSelectedFile(file);
+    setParsing(true);
+    setParsedRows([]);
+    setCreatedSummary(null);
+
+    try {
+      const XLSX = await loadXlsxLibrary();
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        try {
+          const data = new Uint8Array(evt.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const sheetName = workbook.SheetNames[0];
+          const worksheet = workbook.Sheets[sheetName];
+          const rawRows = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+
+          if (!rawRows || rawRows.length < 2) {
+            showToast('Sheet has no data rows.', 'error');
+            setParsing(false);
+            return;
+          }
+
+          const clean = (v) => (v === undefined || v === null ? '' : String(v).trim().replace(/^["']|["']$/g, '').trim());
+          const headerRow = (rawRows[0] || []).map(c => clean(c).toLowerCase().replace(/[^a-z0-9]/g, ''));
+
+          let dateIdx = -1, timeIdx = -1, shiftIdx = -1, termIdx = -1, classIdx = -1, deptIdx = -1, subjIdx = -1, durIdx = -1, centerIdx = -1, yearIdx = -1;
+
+          headerRow.forEach((col, idx) => {
+            if (['date', 'examdate', 'paperdate', 'dates'].includes(col)) dateIdx = idx;
+            else if (['time', 'starttime', 'examtime', 'timing'].includes(col)) timeIdx = idx;
+            else if (['shift', 'session', 'batchshift'].includes(col)) shiftIdx = idx;
+            else if (['term', 'examterm', 'level'].includes(col)) termIdx = idx;
+            else if (['class', 'grade', 'classlevel'].includes(col)) classIdx = idx;
+            else if (['department', 'dept', 'group', 'faculty', 'stream'].includes(col)) deptIdx = idx;
+            else if (['subject', 'paper', 'subjectname', 'course'].includes(col)) subjIdx = idx;
+            else if (['duration', 'durationmins', 'durationminutes', 'mins', 'timeallowed'].includes(col)) durIdx = idx;
+            else if (['center', 'centers', 'assignedcenters', 'centertarget', 'venue'].includes(col)) centerIdx = idx;
+            else if (['academicyear', 'year', 'sessionyear'].includes(col)) yearIdx = idx;
+          });
+
+          // Fallbacks if not explicitly named
+          if (dateIdx === -1) dateIdx = 0;
+          if (subjIdx === -1 && headerRow.length > 1) subjIdx = (headerRow.length > 6 ? 6 : 1);
+
+          const rows = [];
+          for (let i = 1; i < rawRows.length; i++) {
+            const r = rawRows[i];
+            if (!r || r.length === 0 || r.every(c => !c)) continue;
+            
+            const rawDate = dateIdx !== -1 ? clean(r[dateIdx]) : '';
+            const rawTime = timeIdx !== -1 ? clean(r[timeIdx]) : '09:00';
+            const rawShift = shiftIdx !== -1 ? clean(r[shiftIdx]) : 'Morning';
+            const rawTerm = termIdx !== -1 ? clean(r[termIdx]) : 'SSC-I';
+            const rawClass = classIdx !== -1 ? clean(r[classIdx]) : (rawTerm || 'SSC-I');
+            const rawDept = deptIdx !== -1 ? clean(r[deptIdx]) : 'General';
+            const rawSubject = subjIdx !== -1 ? clean(r[subjIdx]) : '';
+            const rawDuration = durIdx !== -1 ? clean(r[durIdx]) : '180';
+            const rawCenters = centerIdx !== -1 ? clean(r[centerIdx]) : 'Auto';
+            const rawYear = yearIdx !== -1 ? clean(r[yearIdx]) : defaultAcademicYear;
+
+            // Normalize shift
+            let shift = 'Morning';
+            if (rawShift.toLowerCase().includes('even') || rawShift.toLowerCase().includes('afternoon') || rawShift.toLowerCase().includes('2nd') || rawShift.toLowerCase().includes('second')) {
+              shift = 'Evening';
+            }
+
+            const valid = Boolean(rawDate && rawSubject);
+            rows.push({
+              date: rawDate,
+              time: rawTime || '09:00',
+              shift,
+              term: rawTerm || 'SSC-I',
+              class: rawClass || rawTerm || 'SSC-I',
+              department: rawDept || 'General',
+              subject: rawSubject,
+              duration: parseInt(rawDuration) || 180,
+              centers: rawCenters || 'Auto',
+              academicYear: rawYear || defaultAcademicYear,
+              valid
+            });
+          }
+
+          setParsedRows(rows);
+        } catch (err) {
+          showToast('Failed to parse date sheet: ' + err.message, 'error');
+        }
+        setParsing(false);
+      };
+      reader.readAsArrayBuffer(file);
+    } catch (err) {
+      showToast('Could not load Excel parser', 'error');
+      setParsing(false);
+    }
+  };
+
+  const handleUploadSubmit = async () => {
+    const validRows = parsedRows.filter(r => r.valid);
+    if (validRows.length === 0) {
+      showToast('No valid date sheet rows found. Date and Subject are required.', 'error');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await api('/exams/bulk-datesheet', {
+        method: 'POST',
+        body: JSON.stringify({
+          dateSheet: validRows,
+          defaultAcademicYear
+        })
+      });
+      showToast(`🎉 ${res.message || 'Date sheet imported successfully!'}`, 'success');
+      setCreatedSummary(res);
+      onImportSuccess();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+    setSubmitting(false);
+  };
+
+  return (
+    <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', zIndex:1000, display:'flex', alignItems:'center', justifyContent:'center', padding:16 }}>
+      <div style={{ background:'#fff', borderRadius:16, width:'100%', maxWidth:780, maxHeight:'90vh', overflowY:'auto', boxShadow:'0 10px 40px rgba(0,0,0,0.2)', padding:24 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16, borderBottom:'1px solid var(--gray-100)', paddingBottom:12 }}>
+          <div>
+            <h3 style={{ fontSize:17, fontWeight:800, color:'#0a1f6b', margin:0 }}>📥 Bulk Upload Examination Date Sheet</h3>
+            <div style={{ fontSize:11, color:'var(--gray-500)', marginTop:2 }}>Schedule all exams across designated centers instantly from Excel / CSV.</div>
+          </div>
+          <button onClick={onClose} style={{ background:'none', border:'none', fontSize:22, cursor:'pointer', color:'var(--gray-400)' }}>×</button>
+        </div>
+
+        {createdSummary ? (
+          <div style={{ textAlign:'center', padding:'20px 0' }}>
+            <div style={{ fontSize:44 }}>🎉</div>
+            <h3 style={{ fontSize:18, fontWeight:800, color:'#166534', margin:'10px 0 6px' }}>Date Sheet Uploaded & Scheduled!</h3>
+            <p style={{ fontSize:13, color:'#15803d', margin:'0 0 16px' }}>{createdSummary.message}</p>
+            <div style={{ background:'#f0fdf4', border:'1px solid #bbf7d0', borderRadius:12, padding:14, marginBottom:18, display:'inline-block', textAlign:'left', fontSize:12, color:'#334155' }}>
+              <div>📅 <strong>Date Sheet Papers Processed:</strong> {createdSummary.entriesProcessed}</div>
+              <div>📍 <strong>Total Center Exam Instances Created:</strong> <span style={{ color:'#166534', fontWeight:800 }}>{createdSummary.count}</span></div>
+            </div>
+            <div>
+              <button className="btn btn-primary" onClick={onClose} style={{ padding:'10px 24px' }}>
+                Done → View Exam List
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div>
+            {/* Academic Year Selection & Instructions */}
+            <div style={{ display:'grid', gridTemplateColumns:'1fr auto', gap:12, alignItems:'flex-end', marginBottom:14 }}>
+              <div className="input-group" style={{ margin:0 }}>
+                <label style={{ fontSize:11, fontWeight:700 }}>Default Academic Year / Batch</label>
+                <select className="input-field" value={defaultAcademicYear} onChange={e => setDefaultAcademicYear(e.target.value)} style={{ padding:8 }}>
+                  {(years.length > 0 ? years : ['2025-2026', '2026-2027', '2024-2025']).map(y => (
+                    <option key={y} value={y}>{y}</option>
+                  ))}
+                </select>
+              </div>
+              <button 
+                type="button" 
+                className="btn btn-ghost btn-sm" 
+                onClick={downloadDateSheetSampleCSV}
+                style={{ border:'1px solid #cbd5e1', height:38, display:'flex', alignItems:'center', gap:4 }}
+              >
+                📄 Sample Template
+              </button>
+            </div>
+
+            <div style={{ background:'#f8fafc', border:'1px solid #e2e8f0', borderRadius:12, padding:14, marginBottom:16 }}>
+              <div style={{ fontSize:12, fontWeight:700, color:'#0a1f6b', marginBottom:4 }}>Select Date Sheet Spreadsheet</div>
+              <div style={{ fontSize:11, color:'var(--gray-500)', marginBottom:10 }}>Supports .xlsx, .xls, and .csv files.</div>
+              <input type="file" accept=".xlsx,.xls,.csv" onChange={handleFileSelect} style={{ fontSize:12 }} />
+              {parsing && <div style={{ fontSize:12, color:'#2563eb', marginTop:8, fontWeight:600 }}>⏳ Parsing date sheet data…</div>}
+            </div>
+
+            {/* Parsed Preview Table */}
+            {parsedRows.length > 0 && (
+              <div style={{ marginBottom:16 }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:'#0a1f6b' }}>
+                    Preview: {parsedRows.filter(r => r.valid).length} valid / {parsedRows.length} total exam entries
+                  </div>
+                  {parsedRows.some(r => !r.valid) && (
+                    <span style={{ fontSize:11, color:'#dc2626', fontWeight:600 }}>⚠️ Some rows are missing Date or Subject</span>
+                  )}
+                </div>
+
+                <div style={{ maxHeight:220, overflowY:'auto', border:'1px solid #e2e8f0', borderRadius:10 }}>
+                  <table style={{ width:'100%', fontSize:11, borderCollapse:'collapse', textAlign:'left' }}>
+                    <thead style={{ background:'#f1f5f9', position:'sticky', top:0, zIndex:1 }}>
+                      <tr style={{ borderBottom:'1px solid #cbd5e1' }}>
+                        <th style={{ padding:'6px 8px' }}>Status</th>
+                        <th style={{ padding:'6px 8px' }}>Date</th>
+                        <th style={{ padding:'6px 8px' }}>Time</th>
+                        <th style={{ padding:'6px 8px' }}>Level</th>
+                        <th style={{ padding:'6px 8px' }}>Department</th>
+                        <th style={{ padding:'6px 8px' }}>Subject</th>
+                        <th style={{ padding:'6px 8px' }}>Assigned Centers</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {parsedRows.map((r, i) => (
+                        <tr key={i} style={{ borderBottom:'1px solid #f1f5f9', background: r.valid ? '#fff' : '#fef2f2' }}>
+                          <td style={{ padding:'6px 8px' }}>
+                            {r.valid ? (
+                              <span className="badge badge-green" style={{ fontSize:9 }}>Ready</span>
+                            ) : (
+                              <span className="badge badge-red" style={{ fontSize:9 }}>Invalid</span>
+                            )}
+                          </td>
+                          <td style={{ padding:'6px 8px', fontWeight:600, fontFamily:'monospace' }}>{r.date || '<Missing Date>'}</td>
+                          <td style={{ padding:'6px 8px' }}>{r.time} ({r.shift})</td>
+                          <td style={{ padding:'6px 8px' }}>{r.term}</td>
+                          <td style={{ padding:'6px 8px' }}>{r.department}</td>
+                          <td style={{ padding:'6px 8px', fontWeight:700, color:'#0a1f6b' }}>{r.subject || '<Missing Subject>'}</td>
+                          <td style={{ padding:'6px 8px' }}>
+                            <span style={{ background:'#e0f2fe', color:'#0369a1', padding:'1px 6px', borderRadius:4, fontSize:10, fontWeight:700 }}>
+                              {r.centers}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            <div style={{ display:'flex', justifyContent:'flex-end', gap:10 }}>
+              <button type="button" className="btn btn-ghost" onClick={onClose} disabled={submitting}>Cancel</button>
+              <button 
+                type="button" 
+                className="btn btn-primary" 
+                onClick={handleUploadSubmit} 
+                disabled={submitting || parsedRows.filter(r => r.valid).length === 0}
+              >
+                {submitting ? 'Generating Schedules Across Centers…' : `Confirm & Schedule ${parsedRows.filter(r => r.valid).length} Date Sheet Papers`}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ===== EXAM MANAGEMENT — List & Wizard =====
 export function ExamManagement() {
   const navigate = useNavigate();
   const { api, showToast } = useApp();
   const [viewMode, setViewMode] = useState('list'); // 'list' or 'wizard'
+  const [showDateSheetModal, setShowDateSheetModal] = useState(false);
 
   // List view state
   const [allExams, setAllExams] = useState([]);
@@ -1410,13 +1776,29 @@ export function ExamManagement() {
             </button>
           </div>
 
-          <button
-            className="btn btn-primary"
-            style={{ width: 'auto', padding: '9px 18px', fontSize: 13 }}
-            onClick={() => navigate('/admin/exams/create')}
-          >
-            + Create New Exam
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              className="btn btn-primary"
+              style={{ width: 'auto', padding: '9px 18px', fontSize: 13 }}
+              onClick={() => navigate('/admin/exams/create')}
+            >
+              + Create Single Exam
+            </button>
+            <button
+              className="btn btn-ghost"
+              style={{ width: 'auto', padding: '9px 16px', fontSize: 13, background: '#e0e8ff', color: '#0a1f6b', fontWeight: 700, border: '1px solid #c7d7ff' }}
+              onClick={() => setShowDateSheetModal(true)}
+            >
+              📥 Upload Date Sheet (Excel / CSV)
+            </button>
+            <button
+              className="btn btn-ghost"
+              style={{ width: 'auto', padding: '9px 14px', fontSize: 12, border: '1px solid var(--gray-300)' }}
+              onClick={downloadDateSheetSampleCSV}
+            >
+              📄 Sample Template
+            </button>
+          </div>
         </div>
 
         {/* LIST VIEW */}
@@ -1659,6 +2041,16 @@ export function ExamManagement() {
           </div>
         </div>
       )}
+
+      {/* BULK UPLOAD DATE SHEET MODAL */}
+      <UploadDateSheetModal
+        open={showDateSheetModal}
+        onClose={() => setShowDateSheetModal(false)}
+        onImportSuccess={loadExams}
+        showToast={showToast}
+        api={api}
+        years={years}
+      />
     </Page>
   );
 }
@@ -1683,6 +2075,13 @@ export function CreateExam() {
     'HSC-I Supplementary', 'HSC-II Supplementary'
   ]);
 
+  // Center Assignment Mode: 'GROUP' | 'MULTI' | 'SINGLE'
+  const [centerMode, setCenterMode] = useState('GROUP');
+  const [groupPreset, setGroupPreset] = useState('ALL'); // 'ALL' | 'SCHOOLS' | 'COLLEGES'
+  const [selectedCenterIds, setSelectedCenterIds] = useState(new Set());
+  const [multiFilter, setMultiFilter] = useState('ALL'); // 'ALL' | 'SCHOOL' | 'COLLEGE'
+  const [centerSearch, setCenterSearch] = useState('');
+
   const [form, setForm] = useState({
     academicYear: prefill.year || '',
     term: prefill.term || '',
@@ -1694,7 +2093,6 @@ export function CreateExam() {
     time: '',
     duration: '',
     centerId: '',
-    allCenters: false
   });
 
   const [errors, setErrors] = useState({});
@@ -1702,6 +2100,18 @@ export function CreateExam() {
   const set = (k, v) => {
     setForm(f => ({ ...f, [k]: v }));
     if (errors[k]) setErrors(e => ({ ...e, [k]: null }));
+
+    // Smart auto-filter suggestion when Term or Class is selected
+    if (k === 'term' || k === 'class') {
+      const val = String(v || '');
+      if (val.startsWith('SSC')) {
+        setGroupPreset('SCHOOLS');
+        setMultiFilter('SCHOOL');
+      } else if (val.startsWith('HSSC') || val.startsWith('HSC')) {
+        setGroupPreset('COLLEGES');
+        setMultiFilter('COLLEGE');
+      }
+    }
   };
 
   useEffect(() => { api('/academic/years').then(res => { if (Array.isArray(res)) setYears(res); }).catch(() => {}); }, [api]);
@@ -1719,6 +2129,44 @@ export function CreateExam() {
     api(`/academic/subjects?department=${encodeURIComponent(form.department)}`).then(res => { if (Array.isArray(res)) setSubjects(res); }).catch(() => {});
   }, [api, form.department]);
 
+  // Center counts & filtered lists
+  const schoolCenters = centers.filter(c => c.institution_type !== 'College');
+  const collegeCenters = centers.filter(c => c.institution_type === 'College');
+
+  const filteredMultiCenters = centers.filter(c => {
+    const isCol = c.institution_type === 'College';
+    if (multiFilter === 'SCHOOL' && isCol) return false;
+    if (multiFilter === 'COLLEGE' && !isCol) return false;
+    if (!centerSearch) return true;
+    const q = centerSearch.toLowerCase();
+    return (
+      (c.name && c.name.toLowerCase().includes(q)) ||
+      (c.school_id && c.school_id.toLowerCase().includes(q)) ||
+      (c.district && c.district.toLowerCase().includes(q))
+    );
+  });
+
+  const toggleCenter = (id) => {
+    setSelectedCenterIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const selectAllFiltered = () => {
+    setSelectedCenterIds(prev => {
+      const next = new Set(prev);
+      filteredMultiCenters.forEach(c => next.add(c.id));
+      return next;
+    });
+  };
+
+  const clearMultiSelection = () => {
+    setSelectedCenterIds(new Set());
+  };
+
   const save = async () => {
     const errs = {};
     if (!form.academicYear) errs.academicYear = 'Academic Year is required';
@@ -1727,7 +2175,12 @@ export function CreateExam() {
     if (!form.subject) errs.subject = 'Subject is required';
     if (!form.class) errs.class = 'Class is required';
     if (!form.date) errs.date = 'Exam Date is required';
-    if (!form.allCenters && !form.centerId) errs.centerId = 'Examination Center School is required';
+
+    if (centerMode === 'SINGLE' && !form.centerId) {
+      errs.centerId = 'Examination Center is required';
+    } else if (centerMode === 'MULTI' && selectedCenterIds.size === 0) {
+      errs.centerSelection = 'Please select at least one examination center';
+    }
 
     if (Object.keys(errs).length > 0) {
       setErrors(errs);
@@ -1735,9 +2188,22 @@ export function CreateExam() {
       return;
     }
 
+    const payload = { ...form };
+    if (centerMode === 'GROUP') {
+      payload.centerFilter = groupPreset;
+      payload.allCenters = (groupPreset === 'ALL');
+      delete payload.centerId;
+    } else if (centerMode === 'MULTI') {
+      payload.centerIds = Array.from(selectedCenterIds);
+      delete payload.centerId;
+      delete payload.allCenters;
+    } else {
+      payload.allCenters = false;
+    }
+
     setLoading(true);
     try {
-      const created = await api('/exams', { method: 'POST', body: JSON.stringify(form) });
+      const created = await api('/exams', { method: 'POST', body: JSON.stringify(payload) });
       showToast('🎉 Exam created successfully!', 'success');
       setCreatedExamResult(created);
     } catch (e) {
@@ -1749,7 +2215,7 @@ export function CreateExam() {
   return (
     <Page>
       <Toast />
-      <PageHeader title="Create Exam" icon="📋" backPath="/admin/exams" />
+      <PageHeader title="Create Exam Schedule" icon="📋" backPath="/admin/exams" />
       <div className="page-content">
         <div style={{ background: '#fff', borderRadius: 14, padding: 20, border: '1px solid var(--gray-100)', boxShadow: '0 2px 8px rgba(0,0,0,0.03)' }}>
           <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 14, color: '#0a1f6b', borderBottom: '1px solid var(--gray-100)', paddingBottom: 8 }}>
@@ -1803,7 +2269,7 @@ export function CreateExam() {
           <div className="divider" />
 
           <div style={{ fontWeight: 800, fontSize: 15, marginBottom: 14, color: '#0a1f6b', borderBottom: '1px solid var(--gray-100)', paddingBottom: 8 }}>
-            Exam Scheduling Details
+            Exam Scheduling & Center Allocation
           </div>
 
           <div className={`input-group ${errors.class ? 'has-error' : ''}`}>
@@ -1815,30 +2281,225 @@ export function CreateExam() {
             {errors.class && <div className="field-error-msg">⚠️ {errors.class}</div>}
           </div>
 
-          <div style={{ background: '#f0f4ff', borderRadius: 10, padding: 12, marginBottom: 16, border: '1px solid #c7d2fe' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <input type="checkbox" id="allCenters" checked={form.allCenters} onChange={e => set('allCenters', e.target.checked)} style={{ width: 18, height: 18, cursor: 'pointer' }} />
-              <label htmlFor="allCenters" style={{ fontSize: 12, fontWeight: 700, cursor: 'pointer', color: '#0a1f6b' }}>
-                Assign to All Active Examination Centers
-              </label>
+          {/* Center Allocation Box */}
+          <div style={{ background: '#f8fafc', borderRadius: 12, padding: 14, marginBottom: 18, border: '1px solid #e2e8f0' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, flexWrap: 'wrap', gap: 6 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: '#0a1f6b' }}>
+                📍 Examination Center Allocation
+              </div>
+              <div style={{ display: 'flex', background: '#e2e8f0', borderRadius: 8, padding: 2 }}>
+                <button
+                  type="button"
+                  onClick={() => setCenterMode('GROUP')}
+                  style={{
+                    padding: '4px 10px', fontSize: 11, fontWeight: 700, borderRadius: 6, border: 'none', cursor: 'pointer',
+                    background: centerMode === 'GROUP' ? '#0a1f6b' : 'transparent',
+                    color: centerMode === 'GROUP' ? '#fff' : '#475569'
+                  }}
+                >
+                  🌐 Group Presets
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCenterMode('MULTI')}
+                  style={{
+                    padding: '4px 10px', fontSize: 11, fontWeight: 700, borderRadius: 6, border: 'none', cursor: 'pointer',
+                    background: centerMode === 'MULTI' ? '#0a1f6b' : 'transparent',
+                    color: centerMode === 'MULTI' ? '#fff' : '#475569'
+                  }}
+                >
+                  ☑️ Select Multiple ({selectedCenterIds.size})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setCenterMode('SINGLE')}
+                  style={{
+                    padding: '4px 10px', fontSize: 11, fontWeight: 700, borderRadius: 6, border: 'none', cursor: 'pointer',
+                    background: centerMode === 'SINGLE' ? '#0a1f6b' : 'transparent',
+                    color: centerMode === 'SINGLE' ? '#fff' : '#475569'
+                  }}
+                >
+                  🎯 Single Center
+                </button>
+              </div>
             </div>
-            <div style={{ fontSize: 11, color: 'var(--gray-600)', marginTop: 4, marginLeft: 26 }}>
-              {form.allCenters ? 'Will automatically generate separate exam schedules for each active center.' : 'Uncheck to assign to a specific school center below.'}
-            </div>
-          </div>
 
-          {!form.allCenters && (
-            <div className={`input-group ${errors.centerId ? 'has-error' : ''}`}>
-              <label>Examination Center School <span className="req-star">*</span></label>
-              <SearchableSelect
-                placeholder="Search center school..."
-                options={centers.map(c => ({ value: c.id, label: `${c.name} (${c.school_id})` }))}
-                value={form.centerId}
-                onChange={v => set('centerId', v)}
-                error={errors.centerId}
-              />
-            </div>
-          )}
+            {/* MODE 1: GROUP PRESETS */}
+            {centerMode === 'GROUP' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 10 }}>
+                <div style={{ fontSize: 11, color: '#64748b' }}>
+                  Assign this exam across all centers matching the selected category:
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 8 }}>
+                  <div
+                    onClick={() => setGroupPreset('ALL')}
+                    style={{
+                      padding: '10px 12px', borderRadius: 10, cursor: 'pointer', border: groupPreset === 'ALL' ? '2px solid #0a1f6b' : '1px solid #cbd5e1',
+                      background: groupPreset === 'ALL' ? '#eff6ff' : '#fff', display: 'flex', alignItems: 'center', gap: 8
+                    }}
+                  >
+                    <input type="radio" checked={groupPreset === 'ALL'} onChange={() => setGroupPreset('ALL')} style={{ cursor: 'pointer' }} />
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#0a1f6b' }}>🌐 All Active Centers</div>
+                      <div style={{ fontSize: 10, color: '#64748b' }}>{centers.length} total institutions</div>
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => setGroupPreset('SCHOOLS')}
+                    style={{
+                      padding: '10px 12px', borderRadius: 10, cursor: 'pointer', border: groupPreset === 'SCHOOLS' ? '2px solid #0284c7' : '1px solid #cbd5e1',
+                      background: groupPreset === 'SCHOOLS' ? '#e0f2fe' : '#fff', display: 'flex', alignItems: 'center', gap: 8
+                    }}
+                  >
+                    <input type="radio" checked={groupPreset === 'SCHOOLS'} onChange={() => setGroupPreset('SCHOOLS')} style={{ cursor: 'pointer' }} />
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#0369a1' }}>🏫 All School Centers (SSC)</div>
+                      <div style={{ fontSize: 10, color: '#64748b' }}>{schoolCenters.length} school centers</div>
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => setGroupPreset('COLLEGES')}
+                    style={{
+                      padding: '10px 12px', borderRadius: 10, cursor: 'pointer', border: groupPreset === 'COLLEGES' ? '2px solid #d97706' : '1px solid #cbd5e1',
+                      background: groupPreset === 'COLLEGES' ? '#fef3c7' : '#fff', display: 'flex', alignItems: 'center', gap: 8
+                    }}
+                  >
+                    <input type="radio" checked={groupPreset === 'COLLEGES'} onChange={() => setGroupPreset('COLLEGES')} style={{ cursor: 'pointer' }} />
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: '#92400e' }}>🏛️ All College Centers (HSSC)</div>
+                      <div style={{ fontSize: 10, color: '#64748b' }}>{collegeCenters.length} college centers</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* MODE 2: MULTI SELECT CHECKLIST */}
+            {centerMode === 'MULTI' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginTop: 8 }}>
+                {/* Search & Category Filter Pills */}
+                <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <input
+                    className="input-field"
+                    style={{ flex: 1, minWidth: 160, padding: '6px 10px', fontSize: 11 }}
+                    placeholder="🔍 Filter centers by name, code, district..."
+                    value={centerSearch}
+                    onChange={e => setCenterSearch(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setMultiFilter('ALL')}
+                    style={{
+                      padding: '4px 8px', borderRadius: 14, fontSize: 10, fontWeight: 700, border: 'none', cursor: 'pointer',
+                      background: multiFilter === 'ALL' ? '#0a1f6b' : '#e2e8f0', color: multiFilter === 'ALL' ? '#fff' : '#475569'
+                    }}
+                  >
+                    All ({centers.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMultiFilter('SCHOOL')}
+                    style={{
+                      padding: '4px 8px', borderRadius: 14, fontSize: 10, fontWeight: 700, border: 'none', cursor: 'pointer',
+                      background: multiFilter === 'SCHOOL' ? '#0284c7' : '#e0f2fe', color: multiFilter === 'SCHOOL' ? '#fff' : '#0369a1'
+                    }}
+                  >
+                    🏫 Schools ({schoolCenters.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMultiFilter('COLLEGE')}
+                    style={{
+                      padding: '4px 8px', borderRadius: 14, fontSize: 10, fontWeight: 700, border: 'none', cursor: 'pointer',
+                      background: multiFilter === 'COLLEGE' ? '#d97706' : '#fef3c7', color: multiFilter === 'COLLEGE' ? '#fff' : '#92400e'
+                    }}
+                  >
+                    🏛️ Colleges ({collegeCenters.length})
+                  </button>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11 }}>
+                  <span style={{ fontWeight: 700, color: '#0a1f6b' }}>
+                    Selected: <span style={{ background: '#dbeafe', color: '#1e40af', padding: '2px 8px', borderRadius: 10 }}>{selectedCenterIds.size} centers</span>
+                  </span>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <button type="button" onClick={selectAllFiltered} style={{ background: 'none', border: 'none', color: '#2563eb', fontWeight: 700, cursor: 'pointer', fontSize: 11 }}>
+                      + Select All Filtered ({filteredMultiCenters.length})
+                    </button>
+                    {selectedCenterIds.size > 0 && (
+                      <button type="button" onClick={clearMultiSelection} style={{ background: 'none', border: 'none', color: '#dc2626', fontWeight: 700, cursor: 'pointer', fontSize: 11 }}>
+                        ✕ Clear All
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Checklist container */}
+                <div style={{ maxHeight: 180, overflowY: 'auto', border: '1px solid #cbd5e1', borderRadius: 8, background: '#fff' }}>
+                  {filteredMultiCenters.map(c => {
+                    const isChecked = selectedCenterIds.has(c.id);
+                    const isCollege = c.institution_type === 'College';
+                    return (
+                      <div
+                        key={c.id}
+                        onClick={() => toggleCenter(c.id)}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', borderBottom: '1px solid #f1f5f9', cursor: 'pointer',
+                          background: isChecked ? '#f0f9ff' : '#fff', transition: 'background .1s'
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isChecked}
+                          onChange={() => {}}
+                          style={{ cursor: 'pointer' }}
+                        />
+                        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 12, fontWeight: isChecked ? 700 : 600, color: '#0f172a' }}>{c.name}</span>
+                          <span style={{ fontSize: 10, color: '#64748b' }}>({c.school_id})</span>
+                          {isCollege ? (
+                            <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 4, background: '#fef3c7', color: '#92400e', fontWeight: 700 }}>
+                              🏛️ College
+                            </span>
+                          ) : (
+                            <span style={{ fontSize: 9, padding: '1px 6px', borderRadius: 4, background: '#e0f2fe', color: '#0369a1', fontWeight: 700 }}>
+                              🏫 School
+                            </span>
+                          )}
+                          {c.district && <span style={{ fontSize: 10, color: '#94a3b8' }}>• {c.district}</span>}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {filteredMultiCenters.length === 0 && (
+                    <div style={{ padding: 14, textAlign: 'center', color: '#94a3b8', fontSize: 11 }}>
+                      No centers match your filter.
+                    </div>
+                  )}
+                </div>
+                {errors.centerSelection && <div className="field-error-msg">⚠️ {errors.centerSelection}</div>}
+              </div>
+            )}
+
+            {/* MODE 3: SINGLE CENTER */}
+            {centerMode === 'SINGLE' && (
+              <div className={`input-group ${errors.centerId ? 'has-error' : ''}`} style={{ marginTop: 8 }}>
+                <label style={{ fontSize: 11, fontWeight: 700 }}>Select Single Center School / College *</label>
+                <SearchableSelect
+                  placeholder="Search center school or college..."
+                  options={centers.map(c => ({
+                    value: c.id,
+                    label: `${c.institution_type === 'College' ? '🏛️' : '🏫'} ${c.name} (${c.school_id}) - ${c.district || 'General'}`
+                  }))}
+                  value={form.centerId}
+                  onChange={v => set('centerId', v)}
+                  error={errors.centerId}
+                />
+              </div>
+            )}
+          </div>
 
           <div className={`input-group ${errors.date ? 'has-error' : ''}`}>
             <label>Exam Date <span className="req-star">*</span></label>
@@ -1859,7 +2520,7 @@ export function CreateExam() {
         </div>
 
         <button className="btn btn-primary" style={{ marginTop: 18, padding: 14, fontSize: 15 }} onClick={save} disabled={loading}>
-          {loading ? <><span className="btn-spinner" /> Creating Exam…</> : '✅ Create Exam'}
+          {loading ? <><span className="btn-spinner" /> Creating Exam…</> : '✅ Create Exam Schedule'}
         </button>
       </div>
 
@@ -1869,8 +2530,16 @@ export function CreateExam() {
           <div style={{ background: '#fff', borderRadius: 16, width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', padding: 24, boxShadow: '0 20px 25px -5px rgba(0,0,0,0.1)' }}>
             <div style={{ textAlign: 'center', marginBottom: 16 }}>
               <div style={{ fontSize: 44 }}>✅</div>
-              <div style={{ fontSize: 19, fontWeight: 900, color: '#16a34a', marginTop: 4 }}>Exam Created Successfully!</div>
-              <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 2 }}>Review the details of your newly created exam schedule:</div>
+              <div style={{ fontSize: 19, fontWeight: 900, color: '#166534', marginTop: 4 }}>
+                {Array.isArray(createdExamResult)
+                  ? `🎉 ${createdExamResult.length} Exam Schedules Created!`
+                  : 'Exam Created Successfully!'}
+              </div>
+              <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 2 }}>
+                {Array.isArray(createdExamResult)
+                  ? `Assigned across ${createdExamResult.length} examination centers.`
+                  : 'Review the details of your newly created exam schedule:'}
+              </div>
             </div>
 
             <div style={{ background: '#f8fafc', borderRadius: 12, border: '1px solid var(--gray-200)', padding: 16, marginBottom: 18, display: 'flex', flexDirection: 'column', gap: 8 }}>
@@ -2693,8 +3362,12 @@ export function CenterManagement() {
                       </div>
 
                       <div style={{ fontSize:10, color:'var(--gray-400)', fontWeight:600, textTransform:'uppercase' }}>Home School / College</div>
-                      <div style={{ fontSize:13, fontWeight:700, marginBottom:4, color:'#0f172a' }}>
-                        {a.homeSchool.name} <span style={{ color:'var(--gray-400)', fontWeight:400 }}>({a.homeSchool.schoolId})</span>
+                      <div style={{ fontSize:13, fontWeight:700, marginBottom:4, color:'#0f172a', display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+                        <span>{a.homeSchool.name}</span>
+                        <span style={{ color:'var(--gray-400)', fontWeight:400, fontSize:11 }}>({a.homeSchool.schoolId})</span>
+                        <span style={{ fontSize:9, padding:'1px 6px', borderRadius:4, background: a.homeSchool.institutionType === 'College' ? '#fef3c7' : '#e0f2fe', color: a.homeSchool.institutionType === 'College' ? '#92400e' : '#0369a1', fontWeight:700 }}>
+                          {a.homeSchool.institutionType === 'College' ? '🏛️ College' : '🏫 School'}
+                        </span>
                       </div>
                       
                       <div style={{ fontSize:10, color:'var(--gray-400)', margin:'4px 0' }}>
@@ -2702,8 +3375,11 @@ export function CenterManagement() {
                       </div>
                       
                       <div style={{ fontSize:10, color:'var(--gray-400)', fontWeight:600, textTransform:'uppercase' }}>Examination Center</div>
-                      <div style={{ fontSize:13, fontWeight:800, color: isSelf ? '#b45309' : '#0a1f6b' }}>
-                        📍 {a.centerSchool.name}
+                      <div style={{ fontSize:13, fontWeight:800, color: isSelf ? '#b45309' : '#0a1f6b', display:'flex', alignItems:'center', gap:6, flexWrap:'wrap' }}>
+                        <span>📍 {a.centerSchool.name}</span>
+                        <span style={{ fontSize:9, padding:'1px 6px', borderRadius:4, background: a.centerSchool.institutionType === 'College' ? '#fef3c7' : '#e0f2fe', color: a.centerSchool.institutionType === 'College' ? '#92400e' : '#0369a1', fontWeight:700 }}>
+                          {a.centerSchool.institutionType === 'College' ? '🏛️ College' : '🏫 School'}
+                        </span>
                       </div>
                       <div style={{ fontSize:10, color:'var(--gray-400)' }}>Center Code: {a.centerSchool.schoolId}</div>
                     </div>
