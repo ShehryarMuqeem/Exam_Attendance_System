@@ -42,6 +42,21 @@ router.get('/', protect, requireRole('BoardAdmin'), async (req, res) => {
   }
 });
 
+// Helper to infer institution type from explicit input or institution name
+function inferInstitutionType(type, name) {
+  if (type && (type === 'College' || type === 'School')) return type;
+  if (type && typeof type === 'string') {
+    const t = type.trim().toLowerCase();
+    if (t === 'college' || t === 'hssc' || t === 'intermediate') return 'College';
+    if (t === 'school' || t === 'ssc' || t === 'matric') return 'School';
+  }
+  const n = (name || '').toLowerCase();
+  if (n.includes('college') || n.includes('degree') || n.includes('inter') || n.includes('higher sec') || n.includes('hssc') || n.includes('post grad')) {
+    return 'College';
+  }
+  return 'School';
+}
+
 // POST create single school + SchoolAdmin
 router.post('/', protect, requireRole('BoardAdmin'), async (req, res) => {
   const client = await pool.connect();
@@ -50,6 +65,8 @@ router.post('/', protect, requireRole('BoardAdmin'), async (req, res) => {
     const {
       name,
       district,
+      institutionType,
+      institution_type,
       principalName,
       principalCnic,
       address,
@@ -72,6 +89,7 @@ router.post('/', protect, requireRole('BoardAdmin'), async (req, res) => {
       return res.status(400).json({ message: 'Principal CNIC is required (used as initial login password)' });
     }
 
+    const effectiveType = inferInstitutionType(institutionType || institution_type, name);
     const schoolId = await nextSchoolId(client);
     const cleanPrincipalName = principalName.trim();
     const cleanCnic = principalCnic.replace(/[^0-9]/g, '');
@@ -94,12 +112,13 @@ router.post('/', protect, requireRole('BoardAdmin'), async (req, res) => {
     }
 
     const schoolRes = await client.query(
-      `INSERT INTO schools (school_id, name, district, principal_name, principal_cnic, address, phone, email)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      `INSERT INTO schools (school_id, name, district, institution_type, principal_name, principal_cnic, address, phone, email)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
       [
         schoolId,
         name.trim(),
         district.trim(),
+        effectiveType,
         cleanPrincipalName,
         cleanCnic,
         address ? address.trim() : null,
@@ -159,6 +178,7 @@ router.post('/bulk', protect, requireRole('BoardAdmin'), async (req, res) => {
       const item = schools[i];
       const name = (item.name || item.schoolName || item.school_name || '').trim();
       const district = (item.district || item.city || '').trim();
+      const institutionType = inferInstitutionType(item.institutionType || item.institution_type || item.type || item.category, name);
       const principalName = (item.principalName || item.principal_name || item.principal || item.headName || '').trim();
       const principalCnic = (item.principalCnic || item.principal_cnic || item.cnic || item.cnicNo || '').trim();
       const address = (item.address || item.location || '').trim();
@@ -195,12 +215,13 @@ router.post('/bulk', protect, requireRole('BoardAdmin'), async (req, res) => {
       const hashed = await bcrypt.hash(plainPassword, 10);
 
       const schoolRes = await client.query(
-        `INSERT INTO schools (school_id, name, district, principal_name, principal_cnic, address, phone, email)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+        `INSERT INTO schools (school_id, name, district, institution_type, principal_name, principal_cnic, address, phone, email)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
         [
           schoolId,
           name,
           effectiveDistrict,
+          institutionType,
           cleanPrincipal,
           cleanCnic,
           address || null,
@@ -230,6 +251,7 @@ router.post('/bulk', protect, requireRole('BoardAdmin'), async (req, res) => {
         schoolId: school.school_id,
         name: school.name,
         district: school.district,
+        institutionType: school.institution_type,
         principalName: cleanPrincipal,
         principalCnic: cleanCnic,
         username: assignedUsername,
@@ -247,7 +269,7 @@ router.post('/bulk', protect, requireRole('BoardAdmin'), async (req, res) => {
 
     await client.query('COMMIT');
     res.status(201).json({
-      message: `Successfully registered ${createdSchools.length} school(s)!`,
+      message: `Successfully registered ${createdSchools.length} institution(s)!`,
       count: createdSchools.length,
       schools: createdSchools,
       errors: errors.length > 0 ? errors : undefined,
@@ -269,6 +291,8 @@ router.put('/:id', protect, requireRole('BoardAdmin'), async (req, res) => {
     const {
       name,
       district,
+      institutionType,
+      institution_type,
       principalName,
       principalCnic,
       address,
@@ -289,6 +313,8 @@ router.put('/:id', protect, requireRole('BoardAdmin'), async (req, res) => {
 
     const updatedName = name !== undefined ? name.trim() : current.name;
     const updatedDistrict = district !== undefined ? district.trim() : current.district;
+    const rawType = institutionType || institution_type;
+    const updatedType = rawType !== undefined ? inferInstitutionType(rawType, updatedName) : (current.institution_type || inferInstitutionType(null, updatedName));
     const updatedPrincipal = principalName !== undefined ? principalName.trim() : current.principal_name;
     const updatedCnic = principalCnic !== undefined ? String(principalCnic).replace(/[^0-9]/g, '') : current.principal_cnic;
     const updatedAddress = address !== undefined ? address : current.address;
@@ -298,11 +324,12 @@ router.put('/:id', protect, requireRole('BoardAdmin'), async (req, res) => {
 
     const { rows: schoolRows } = await client.query(
       `UPDATE schools 
-       SET name=$1, district=$2, principal_name=$3, principal_cnic=$4, address=$5, phone=$6, email=$7, status=$8
-       WHERE id=$9 RETURNING *`,
+       SET name=$1, district=$2, institution_type=$3, principal_name=$4, principal_cnic=$5, address=$6, phone=$7, email=$8, status=$9
+       WHERE id=$10 RETURNING *`,
       [
         updatedName,
         updatedDistrict,
+        updatedType,
         updatedPrincipal,
         updatedCnic,
         updatedAddress || null,
